@@ -19,6 +19,20 @@ $ echo 'APIFY_TOKEN=op://Claude/Apify/credential' >> ~/.claude/.env.tpl
 $ op-env claude           # Touch ID once; $APIFY_TOKEN is now available to everything Claude runs
 ```
 
+## The guard hooks (installed with the plugin)
+
+Rules in a skill are advice. Hooks are enforcement. `hooks/guard.py` runs on four events:
+
+| Event | What it catches | What happens |
+|---|---|---|
+| `UserPromptSubmit` | **You** paste something that looks like a secret (known token formats, or `password:`/`token=` followed by a value) | The prompt is blocked **and erased before Claude sees it**. You get a note: use `op-store`. Prefix the message with `#allow-secret` to send anyway. |
+| `PreToolUse` Bash | Claude runs `op read`, `op item get --reveal`, `printenv`, `echo $TOKEN`, `cat .env*`, `bash -x op-store`, `op item create credential=...`, or any command with a literal secret | Blocked. Claude is told to use `$VAR` from `op-env` or `op-store`. Prefix the command with `ALLOW_SECRET=1 ` to override. |
+| `PreToolUse` Write/Edit | Claude writes a literal secret into a file | Blocked. Use `op://` or `${VAR}`. |
+| `Stop` | Claude's last message asks you to *paste / send / cole / digite* a key, token or password | Claude is sent back to do it right: run `op-store`. |
+
+Fail-open: if `python3` is missing or the script errors, nothing is blocked. Disable with `CLAUDE_1PASSWORD_GUARD=off`.
+Run `bash tests/run.sh` to see the 41 cases.
+
 ## Why not just `op run -- claude`?
 
 The child of `op run` gets no TTY, so Claude Code drops into non-interactive `--print` mode.

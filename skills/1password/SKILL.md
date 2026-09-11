@@ -23,6 +23,14 @@ Also never: print a secret value, `op read` inside every Bash call (biometric pr
 `source <(op run ... env)` or `eval` (values with shell metacharacters execute as code),
 `bash -x` any script that handles a value (the trace prints it).
 
+## The guard hooks enforce this
+
+When installed as a plugin, `hooks/guard.py` blocks: secrets pasted by the user (erased before you
+see them), `op read` / `op item get --reveal` / `printenv` / `echo $TOKEN` / `cat .env*` /
+`op item create ...=value` in Bash, literal secrets in Write/Edit, and any final message of yours
+that asks the user to paste a secret. If a hook blocks you, do what its message says: run
+`op-store <title>` and use the `op://` reference or `$VAR`. Do not look for a way around it.
+
 ## Commands (installed by `install.sh` into `~/.local/bin`)
 
 | Command | What it does |

@@ -6,7 +6,7 @@
     {
       "name": "claude-1password",
       "description": "1Password for Claude Code: op-env launcher, op-store native secret dialog with reveal toggle",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "source": "./",
       "author": { "name": "Lucas Saldanha" }
     }

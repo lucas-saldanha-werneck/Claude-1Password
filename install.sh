@@ -2,14 +2,21 @@
 # install.sh — put op-env / op-store / secret-dialog on PATH, build the macOS dialog, create the template,
 #              self-test the guard. Writes small wrapper scripts (not symlinks: Git Bash on Windows
 #              turns symlinks into copies that go stale).
-# Usage: bash install.sh [--prefix DIR]   (default DIR: ~/.local/bin)
+# Usage: bash install.sh [--prefix DIR] [--wrap-claude]   (default DIR: ~/.local/bin)
+#   --wrap-claude  also installs ~/.local/opbin/claude, a wrapper that starts claude through op-env.
+#                  Put ~/.local/opbin FIRST in PATH (the script prints the line). Plain `claude`,
+#                  launchers that resolve `claude` via PATH, and `op-env claude` all keep working.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PREFIX="$HOME/.local/bin"
-if [ "${1:-}" = "--prefix" ]; then
-  [ -n "${2:-}" ] || { echo "install.sh: --prefix needs a directory"; exit 1; }
-  PREFIX="$2"
-fi
+WRAP=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --prefix) [ -n "${2:-}" ] || { echo "install.sh: --prefix needs a directory"; exit 1; }; PREFIX="$2"; shift 2 ;;
+    --wrap-claude) WRAP=1; shift ;;
+    *) echo "install.sh: unknown option $1"; exit 1 ;;
+  esac
+done
 mkdir -p "$PREFIX"
 
 ok()   { printf '  ok    %s\n' "$*"; }
@@ -41,6 +48,13 @@ for t in op-env op-store secret-dialog; do
   rm -f "$PREFIX/$t"
   printf '#!/bin/bash\nexec "%s/bin/%s" "$@"\n' "$HERE" "$t" > "$PREFIX/$t" && chmod +x "$PREFIX/$t" && ok "$PREFIX/$t -> $HERE/bin/$t"
 done
+
+# 2b. optional claude wrapper (its own directory, so it can sit before ~/.local/bin in PATH)
+if [ "$WRAP" = 1 ]; then
+  OPBIN="$HOME/.local/opbin"; mkdir -p "$OPBIN"; rm -f "$OPBIN/claude"
+  cp "$HERE/bin/claude-wrapper" "$OPBIN/claude" && chmod +x "$OPBIN/claude" && ok "$OPBIN/claude (wrapper: claude → op-env → real claude)"
+  case ":$PATH:" in *":$OPBIN:"*) ok "$OPBIN is in PATH" ;; *) warn "add to your shell profile, AFTER any line that sets PATH:  export PATH=\"\$HOME/.local/opbin:\$PATH\"" ;; esac
+fi
 
 # 3. template
 TPL="$HOME/.claude/.env.tpl"

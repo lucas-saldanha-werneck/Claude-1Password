@@ -5,6 +5,15 @@ Versions: [Semantic Versioning](https://semver.org/). Release notes and download
 
 ## [Unreleased]
 
+### Added
+- `install.sh --wrap-claude`: installs `~/.local/opbin/claude`, a wrapper so plain `claude` starts through `op-env` (loop-safe via `OP_ENV_LOADED=1`).
+- `op-env --strict`: refuse to run when the secrets cannot be loaded.
+
+### Changed
+- `op-env` runs the command without secrets (with a loud warning) when the template is empty or 1Password is locked; `--strict` restores the old refusal.
+- `op-env` exports `OP_ENV_LOADED=1` into the launched command.
+
+### Notes
 - Windows (PowerShell/WinForms) and Linux (kdialog, GTK4) dialog backends are written but not yet verified on real machines. Reports welcome.
 
 ## [0.3.0] - 2026-09-11

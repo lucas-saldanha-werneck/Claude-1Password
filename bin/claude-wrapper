@@ -1,0 +1,19 @@
+#!/bin/bash
+# claude-wrapper — makes plain `claude` start through op-env, so every session has the secrets.
+# Installed by `install.sh --wrap-claude` as  ~/.local/opbin/claude  (a directory you put FIRST in PATH).
+# Loop-safe: op-env sets OP_ENV_LOADED=1 in the child, and we always hand op-env the REAL binary path.
+# If op-env or the real binary is missing, this degrades to running claude directly.
+set +xv
+REAL="${CLAUDE_REAL_BIN:-$HOME/.local/bin/claude}"
+if [ ! -x "$REAL" ]; then
+  # find a claude that is not this wrapper
+  me="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+  for c in $(command -v -a claude 2>/dev/null); do
+    [ "$c" != "$me" ] && [ -x "$c" ] && { REAL="$c"; break; }
+  done
+fi
+[ -x "$REAL" ] || { printf 'claude-wrapper: real claude binary not found (set CLAUDE_REAL_BIN)\n' >&2; exit 127; }
+if [ "${OP_ENV_LOADED:-}" = 1 ] || ! command -v op-env >/dev/null 2>&1; then
+  exec "$REAL" "$@"
+fi
+exec op-env "$REAL" "$@"

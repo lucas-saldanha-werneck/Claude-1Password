@@ -79,6 +79,17 @@ claude plugin install claude-1password@claude-1password
 ```
 Copying `skills/1password/` into `~/.claude/skills/` gives the rules only, no hooks.
 
+### Make plain `claude` do it (optional)
+
+```bash
+bash install.sh --wrap-claude          # installs ~/.local/opbin/claude
+export PATH="$HOME/.local/opbin:$PATH"  # add to your shell profile, after other PATH lines
+```
+`claude` now starts through `op-env` every time, including through launchers that resolve `claude`
+via PATH (tmux wrappers, auto-retry tools). Loop-safe: `op-env` marks the child with `OP_ENV_LOADED=1`
+and the wrapper always hands `op-env` the real binary. If 1Password is locked, `op-env` warns and
+starts Claude without secrets (`op-env --strict` refuses instead).
+
 ## Usage
 
 ```bash

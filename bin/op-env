@@ -7,6 +7,10 @@
 #   op-env --tpl <file> <command>       use another template
 #   op-env --list                       print WHICH keys would be loaded (names only, no values)
 #   op-env --check                      test op + template + unlock, run nothing
+#   op-env --strict <command>           refuse to run if the secrets cannot be loaded (default: warn and run)
+#
+# Sets OP_ENV_LOADED=1 in the launched command, so a `claude` wrapper (install.sh --wrap-claude)
+# knows the secrets are already there and does not call op-env again.
 #
 # Default template: ~/.claude/.env.tpl  (op:// references only, never values)
 #   APIFY_TOKEN=op://Claude/Apify/credential
@@ -20,12 +24,14 @@ set +xv   # never trace: an inherited -x / SHELLOPTS=xtrace would print values
 set -u
 TPL="${OP_ENV_TPL:-$HOME/.claude/.env.tpl}"
 MODE=run
+STRICT=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --tpl)   TPL="$2"; shift 2 ;;
     --list)  MODE=list; shift ;;
     --check) MODE=check; shift ;;
+    --strict) STRICT=1; shift ;;
     -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     --) shift; break ;;
     *) break ;;
@@ -62,6 +68,7 @@ fi
 if [ "$TOTAL" -eq 0 ] && [ "$MODE" = run ]; then
   [ $# -gt 0 ] || die "missing command. e.g.: op-env claude"
   printf 'op-env: template has no active keys (%s); running without secrets\n' "$TPL" >&2
+  export OP_ENV_LOADED=1
   exec "$@"
 fi
 
@@ -109,12 +116,15 @@ while IFS= read -r -d '' k && IFS= read -r -d '' v; do
 done < <(resolve)
 
 if [ "$loaded" -eq 0 ]; then
-  die "no keys loaded. 1Password locked or CLI not integrated? Try: op-env --check"
+  [ "$STRICT" = 1 ] && die "no keys loaded. 1Password locked or CLI not integrated? Try: op-env --check"
+  printf 'op-env: WARNING: no keys loaded (1Password locked or CLI not integrated?). Running WITHOUT secrets. Run op-env --check, then restart.\n' >&2
+elif [ "$loaded" -lt "$TOTAL" ]; then
+  printf 'op-env: warning: %s of %s keys loaded (a reference did not resolve; run op-env --check)\n' "$loaded" "$TOTAL" >&2
 fi
-[ "$loaded" -lt "$TOTAL" ] && printf 'op-env: warning: %s of %s keys loaded (a reference did not resolve; run op-env --check)\n' "$loaded" "$TOTAL" >&2
 
 # A service-account token must not travel into the launched command: it would give every `op` call
 # inside the session full vault access with no prompt. Set OP_ENV_KEEP_SA=1 to keep it on purpose.
 [ "${OP_ENV_KEEP_SA:-}" = 1 ] || unset OP_SERVICE_ACCOUNT_TOKEN
 
+export OP_ENV_LOADED=1
 exec "$@"

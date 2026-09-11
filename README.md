@@ -34,7 +34,7 @@ and the 1Password desktop app with **Settings → Developer → "Integrate with 
 token in `OP_SERVICE_ACCOUNT_TOKEN`.
 
 ```bash
-git clone https://github.com/OWNER/Claude-1Password.git
+git clone https://github.com/lucas-saldanha-werneck/Claude-1Password.git
 cd Claude-1Password
 bash install.sh          # links op-env / op-store / secret-dialog into ~/.local/bin,
                          # builds the macOS dialog (needs swiftc), creates ~/.claude/.env.tpl
@@ -44,7 +44,7 @@ op-env --check
 Install the skill so Claude knows the rules (never ask for secrets in chat, use `op-store`, etc.):
 
 ```bash
-claude plugin marketplace add OWNER/Claude-1Password
+claude plugin marketplace add lucas-saldanha-werneck/Claude-1Password
 claude plugin install claude-1password@claude-1password
 ```
 or copy `skills/1password/` into `~/.claude/skills/`.

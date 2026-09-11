@@ -3,7 +3,7 @@
   "description": "1Password for Claude Code: launch with secrets injected (op-env), store secrets through a native dialog Claude never sees (op-store), native reveal-toggle dialogs on macOS/Windows/Linux.",
   "version": "0.1.0",
   "author": { "name": "Lucas Saldanha" },
-  "repository": "https://github.com/OWNER/Claude-1Password",
+  "repository": "https://github.com/lucas-saldanha-werneck/Claude-1Password",
   "license": "MIT",
   "keywords": ["1password", "secrets", "security", "op", "credentials", "claude-code"]
 }

@@ -1,0 +1,80 @@
+#!/bin/bash
+# op-env — load 1Password secrets into environment variables and exec a command
+#          with the TTY preserved. One `op` call = one biometric prompt per session.
+#
+# Usage:
+#   op-env <command> [args...]          e.g.  op-env claude
+#   op-env --tpl <file> <command>       use another template
+#   op-env --list                       print WHICH keys would be loaded (names only, no values)
+#   op-env --check                      test op + template + unlock, run nothing
+#
+# Default template: ~/.claude/.env.tpl  (op:// references only, never values)
+#   APIFY_TOKEN=op://Claude/Apify/credential
+#
+# Why not `op run -- claude`?  The child of `op run` gets no TTY, so Claude Code
+# falls back to --print mode. This wrapper resolves once, exports, then `exec`s.
+# Pattern from the community (gist by DAESA24), hardened.
+
+set -u
+TPL="${OP_ENV_TPL:-$HOME/.claude/.env.tpl}"
+MODE=run
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --tpl)   TPL="$2"; shift 2 ;;
+    --list)  MODE=list; shift ;;
+    --check) MODE=check; shift ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+done
+
+die() { printf 'op-env: %s\n' "$*" >&2; exit 1; }
+
+command -v op >/dev/null 2>&1 || die "op not found. macOS: brew install --cask 1password-cli | https://developer.1password.com/docs/cli/get-started/"
+[ -f "$TPL" ] || die "template not found: $TPL  (see templates/env.tpl.example)"
+
+# key names from the template (skip comments and blank lines)
+KEYS=$(grep -v '^[[:space:]]*#' "$TPL" | grep -v '^[[:space:]]*$' | cut -d= -f1 | tr -d ' ' | paste -sd'|' -)
+[ -n "$KEYS" ] || die "template is empty: $TPL"
+TOTAL=$(printf '%s\n' "$KEYS" | tr '|' '\n' | wc -l | tr -d ' ')
+
+if [ "$MODE" = list ]; then
+  printf '%s\n' "$KEYS" | tr '|' '\n'
+  exit 0
+fi
+
+if [ "$MODE" = check ]; then
+  printf 'op:        %s\n' "$(op --version)"
+  printf 'template:  %s (%s keys)\n' "$TPL" "$TOTAL"
+  # `op whoami` fails under app integration ("account is not signed in"); vault list proves the session
+  if op vault list >/dev/null 2>&1; then
+    printf 'account:   %s\n' "$(op account list 2>/dev/null | awk 'NR==2{print $2" ("$1")"}')"
+  else
+    printf 'account:   NOT connected. 1Password app > Settings > Developer > "Integrate with 1Password CLI" (or set OP_SERVICE_ACCOUNT_TOKEN)\n'
+    exit 1
+  fi
+  n=$(op run --no-masking --env-file "$TPL" -- env 2>/dev/null | grep -E -c "^($KEYS)=")
+  printf 'resolved:  %s of %s keys\n' "$n" "$TOTAL"
+  [ "$n" -eq "$TOTAL" ] || exit 1
+  exit 0
+fi
+
+[ $# -gt 0 ] || die "missing command. e.g.: op-env claude"
+
+# one op call for every key; export only the template's keys
+loaded=0
+while IFS= read -r line; do
+  key="${line%%=*}"
+  val="${line#*=}"
+  export "$key=$val"
+  loaded=$((loaded+1))
+done < <(op run --no-masking --env-file "$TPL" -- env 2>/dev/null | grep -E "^($KEYS)=")
+
+if [ "$loaded" -eq 0 ]; then
+  die "no keys loaded. 1Password locked or CLI not integrated? Try: op-env --check"
+fi
+[ "$loaded" -lt "$TOTAL" ] && printf 'op-env: warning: %s of %s keys loaded\n' "$loaded" "$TOTAL" >&2
+
+exec "$@"

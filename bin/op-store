@@ -1,0 +1,79 @@
+#!/bin/bash
+# op-store — save a secret in 1Password WITHOUT it passing through the Claude chat,
+#            the visible command line, shell history or the model's context.
+#            Opens a native dialog with a hidden field (and an eye to reveal);
+#            the value goes straight to `op`.
+#
+# Usage:
+#   op-store <title>                         # "API Credential" item, field `credential`
+#   op-store --login <title> [--url URL]     # Login item: asks username (visible) + password (hidden)
+#   op-store --field <name> <title>          # another field name (e.g. --field password)
+#   op-store --update <title>                # edit an existing item instead of creating
+#   op-store --vault <vault> ...             # default: Claude  (or $OP_STORE_VAULT)
+#
+# Output: only "OK op://Vault/Title/field" or the reason it failed. Never the value.
+# Community pattern: mackinleysmith/1pass-secrets (osascript "with hidden answer"),
+# extended with a cross-platform dialog that has a reveal toggle.
+
+set -u
+VAULT="${OP_STORE_VAULT:-Claude}"; FIELD="credential"; CATEGORY="API Credential"
+LOGIN=0; UPDATE=0; URL=""; TITLE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --vault) VAULT="$2"; shift 2 ;;
+    --field) FIELD="$2"; shift 2 ;;
+    --login) LOGIN=1; CATEGORY="Login"; FIELD="password"; shift ;;
+    --url)   URL="$2"; shift 2 ;;
+    --update) UPDATE=1; shift ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    *) TITLE="$1"; shift ;;
+  esac
+done
+die() { printf 'op-store: %s\n' "$*" >&2; exit 1; }
+[ -n "$TITLE" ] || die "missing title. e.g.: op-store Apify"
+command -v op >/dev/null || die "op not installed"
+op vault list >/dev/null 2>&1 || die "1Password locked or CLI not integrated"
+
+HERE="$(cd "$(dirname "$(readlink "$0" 2>/dev/null || echo "$0")")" && pwd)"
+DIALOG="$HERE/secret-dialog"
+command -v secret-dialog >/dev/null 2>&1 && DIALOG="$(command -v secret-dialog)"
+[ -x "$DIALOG" ] || die "secret-dialog not found next to op-store or in PATH"
+
+# ask "<message>" hidden|visible  → echoes the answer. exit 2 = cancelled, 3 = timeout, 4 = empty
+ask() {
+  local vis=""; [ "$2" = visible ] && vis="--visible"
+  "$DIALOG" "1Password ← Claude Code" "$(printf '%b' "$1")" $vis --timeout 300
+}
+
+USERNAME=""
+if [ "$LOGIN" = 1 ]; then
+  USERNAME=$(ask "Item '$TITLE' (vault $VAULT)\n\nUsername / e-mail:" visible); rc=$?
+  [ $rc -eq 2 ] && die "cancelled at username. Nothing saved."
+  [ $rc -eq 3 ] && die "timed out (5 min). Nothing saved."
+  [ $rc -eq 4 ] && die "empty username. Nothing saved."
+  [ $rc -eq 0 ] || die "dialog failed (exit $rc). Nothing saved."
+fi
+
+VAL=$(ask "Item '$TITLE' → field '$FIELD' (vault $VAULT)\n\nPaste the secret. The field is hidden; use the eye to check it. Claude cannot see this dialog." hidden); rc=$?
+[ $rc -eq 2 ] && die "cancelled. Nothing saved."
+[ $rc -eq 3 ] && die "timed out (5 min). Nothing saved."
+[ $rc -eq 4 ] && die "empty value. Nothing saved."
+[ $rc -eq 0 ] || die "dialog failed (exit $rc). Nothing saved."
+
+args=()
+[ -n "$USERNAME" ] && args+=("username=$USERNAME")
+[ -n "$URL" ] && args+=(--url "$URL")
+
+if [ "$UPDATE" = 1 ]; then
+  op item edit "$TITLE" --vault "$VAULT" "${FIELD}[password]=$VAL" ${args[@]+"${args[@]}"} >/dev/null 2>&1 \
+    || { unset VAL; die "op item edit failed (does '$TITLE' exist in $VAULT?)"; }
+else
+  op item get "$TITLE" --vault "$VAULT" >/dev/null 2>&1 && { unset VAL; die "'$TITLE' already exists in $VAULT. Use --update."; }
+  op item create --vault "$VAULT" --category "$CATEGORY" --title "$TITLE" "${FIELD}[password]=$VAL" ${args[@]+"${args[@]}"} >/dev/null 2>&1 \
+    || { unset VAL; die "op item create failed"; }
+fi
+unset VAL
+# confirm existence without revealing
+op item get "$TITLE" --vault "$VAULT" --fields "label=$FIELD" --format json 2>/dev/null | grep -q '"id"' \
+  && printf 'OK op://%s/%s/%s\n' "$VAULT" "$TITLE" "$FIELD" \
+  || die "saved, but could not confirm field '$FIELD'"

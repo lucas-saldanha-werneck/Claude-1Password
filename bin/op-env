@@ -51,12 +51,18 @@ while IFS= read -r line || [ -n "$line" ]; do
   [[ "$val" == op://* ]] || die "$TPL:$lineno: value of $key must be an op:// reference (never a literal secret)"
   KEYS+=("$key")
 done < "$TPL"
-[ ${#KEYS[@]} -gt 0 ] || die "template is empty: $TPL"
 TOTAL=${#KEYS[@]}
 
 if [ "$MODE" = list ]; then
-  printf '%s\n' "${KEYS[@]}"
+  [ "$TOTAL" -gt 0 ] && printf '%s\n' "${KEYS[@]}"
   exit 0
+fi
+
+# An empty template is allowed: nothing to load, just run the command (useful right after install).
+if [ "$TOTAL" -eq 0 ] && [ "$MODE" = run ]; then
+  [ $# -gt 0 ] || die "missing command. e.g.: op-env claude"
+  printf 'op-env: template has no active keys (%s); running without secrets\n' "$TPL" >&2
+  exec "$@"
 fi
 
 # Resolve once. Inside `op run` the variables are set; print them NUL-delimited so
@@ -81,6 +87,7 @@ if [ "$MODE" = check ]; then
     printf 'account:   NOT connected. 1Password app > Settings > Developer > "Integrate with 1Password CLI" (or set OP_SERVICE_ACCOUNT_TOKEN)\n'
     exit 1
   fi
+  [ "$TOTAL" -eq 0 ] && { printf 'resolved:  0 of 0 keys (template has no active keys yet; add one with op-store)\n'; exit 0; }
   n=0
   while IFS= read -r -d '' k && IFS= read -r -d '' v; do n=$((n+1)); done < <(resolve)
   printf 'resolved:  %s of %s keys\n' "$n" "$TOTAL"

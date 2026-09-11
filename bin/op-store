@@ -1,79 +1,118 @@
 #!/bin/bash
 # op-store — save a secret in 1Password WITHOUT it passing through the Claude chat,
-#            the visible command line, shell history or the model's context.
+#            the command line (argv), shell history or the model's context.
 #            Opens a native dialog with a hidden field (and an eye to reveal);
-#            the value goes straight to `op`.
+#            the value travels to `op` as a JSON item piped through stdin.
 #
 # Usage:
 #   op-store <title>                         # "API Credential" item, field `credential`
 #   op-store --login <title> [--url URL]     # Login item: asks username (visible) + password (hidden)
 #   op-store --field <name> <title>          # another field name (e.g. --field password)
-#   op-store --update <title>                # edit an existing item instead of creating
+#   op-store --update <title>                # replace the field on an existing item
 #   op-store --vault <vault> ...             # default: Claude  (or $OP_STORE_VAULT)
 #
 # Output: only "OK op://Vault/Title/field" or the reason it failed. Never the value.
-# Community pattern: mackinleysmith/1pass-secrets (osascript "with hidden answer"),
-# extended with a cross-platform dialog that has a reveal toggle.
+# Single-line values only (the dialog is one line). For multi-line secrets use the 1Password app.
+# Needs python3 (for JSON). Community pattern: mackinleysmith/1pass-secrets, extended.
 
+set +xv   # never trace: an inherited -x / SHELLOPTS=xtrace would print the value
 set -u
-VAULT="${OP_STORE_VAULT:-Claude}"; FIELD="credential"; CATEGORY="API Credential"
+VAULT="${OP_STORE_VAULT:-Claude}"; FIELD="credential"; CATEGORY="API_CREDENTIAL"
 LOGIN=0; UPDATE=0; URL=""; TITLE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --vault) VAULT="$2"; shift 2 ;;
     --field) FIELD="$2"; shift 2 ;;
-    --login) LOGIN=1; CATEGORY="Login"; FIELD="password"; shift ;;
+    --login) LOGIN=1; CATEGORY="LOGIN"; FIELD="password"; shift ;;
     --url)   URL="$2"; shift 2 ;;
     --update) UPDATE=1; shift ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    --) shift; TITLE="${1:-}"; break ;;
+    -*) printf 'op-store: unknown option %s\n' "$1" >&2; exit 1 ;;
     *) TITLE="$1"; shift ;;
   esac
 done
 die() { printf 'op-store: %s\n' "$*" >&2; exit 1; }
 [ -n "$TITLE" ] || die "missing title. e.g.: op-store Apify"
+field_re='^[A-Za-z0-9_ .-]+$'   # in a variable: bash 3.2 cannot parse a space inside an inline regex
+[[ "$FIELD" =~ $field_re ]] || die "field name has unsupported characters"
 command -v op >/dev/null || die "op not installed"
+command -v python3 >/dev/null || die "python3 is required (builds the JSON item)"
 op vault list >/dev/null 2>&1 || die "1Password locked or CLI not integrated"
+op vault get "$VAULT" >/dev/null 2>&1 || die "vault '$VAULT' not found (create it in the 1Password app, or pass --vault)"
 
-HERE="$(cd "$(dirname "$(readlink "$0" 2>/dev/null || echo "$0")")" && pwd)"
+# resolve our own location through any chain of symlinks (relative targets included)
+src="$0"
+while [ -L "$src" ]; do
+  d="$(cd "$(dirname "$src")" && pwd)"; src="$(readlink "$src")"
+  case "$src" in /*) ;; *) src="$d/$src" ;; esac
+done
+HERE="$(cd "$(dirname "$src")" && pwd)"
 DIALOG="$HERE/secret-dialog"
-command -v secret-dialog >/dev/null 2>&1 && DIALOG="$(command -v secret-dialog)"
-[ -x "$DIALOG" ] || die "secret-dialog not found next to op-store or in PATH"
+[ -x "$DIALOG" ] || DIALOG="$(command -v secret-dialog 2>/dev/null || true)"
+[ -n "$DIALOG" ] && [ -x "$DIALOG" ] || die "secret-dialog not found next to op-store or in PATH"
 
 # ask "<message>" hidden|visible  → echoes the answer. exit 2 = cancelled, 3 = timeout, 4 = empty
 ask() {
   local vis=""; [ "$2" = visible ] && vis="--visible"
   "$DIALOG" "1Password ← Claude Code" "$(printf '%b' "$1")" $vis --timeout 300
 }
+check_rc() {  # $1 rc, $2 what
+  case "$1" in
+    0) ;;
+    2) die "cancelled at $2. Nothing saved." ;;
+    3) die "timed out (5 min) at $2. Nothing saved." ;;
+    4) die "empty $2. Nothing saved." ;;
+    *) die "dialog failed (exit $1) at $2. Nothing saved." ;;
+  esac
+}
 
 USERNAME=""
 if [ "$LOGIN" = 1 ]; then
-  USERNAME=$(ask "Item '$TITLE' (vault $VAULT)\n\nUsername / e-mail:" visible); rc=$?
-  [ $rc -eq 2 ] && die "cancelled at username. Nothing saved."
-  [ $rc -eq 3 ] && die "timed out (5 min). Nothing saved."
-  [ $rc -eq 4 ] && die "empty username. Nothing saved."
-  [ $rc -eq 0 ] || die "dialog failed (exit $rc). Nothing saved."
+  USERNAME=$(ask "Item '$TITLE' (vault $VAULT)\n\nUsername / e-mail:" visible); check_rc $? "username"
 fi
+VAL=$(ask "Item '$TITLE' → field '$FIELD' (vault $VAULT)\n\nPaste the secret. The field is hidden; use the eye to check it. Claude cannot see this dialog." hidden); check_rc $? "value"
 
-VAL=$(ask "Item '$TITLE' → field '$FIELD' (vault $VAULT)\n\nPaste the secret. The field is hidden; use the eye to check it. Claude cannot see this dialog." hidden); rc=$?
-[ $rc -eq 2 ] && die "cancelled. Nothing saved."
-[ $rc -eq 3 ] && die "timed out (5 min). Nothing saved."
-[ $rc -eq 4 ] && die "empty value. Nothing saved."
-[ $rc -eq 0 ] || die "dialog failed (exit $rc). Nothing saved."
+# Build the item JSON in python and pipe it to op. The secret goes bash → python → op through
+# pipes only: never argv, never the environment (both readable with `ps` by same-user processes).
+# Non-secret parameters travel as argv of the python helper.
+item_json() {  # $1 = create|update ; stdin = username NUL value
+  python3 - "$1" "$TITLE" "$VAULT" "$FIELD" "$CATEGORY" "$URL" "$LOGIN" <<'PY'
+import json, sys
+mode, title, vault, field, cat, url, login = sys.argv[1:8]
+user, _, val = sys.stdin.buffer.read().decode("utf-8").partition("\0")
+f = {"id": field, "type": "CONCEALED", "label": field, "value": val}
+if login == "1":
+    f["purpose"] = "PASSWORD"
+fields = [f]
+if user:
+    fields.insert(0, {"id": "username", "type": "STRING", "purpose": "USERNAME", "label": "username", "value": user})
+item = {"fields": fields} if mode == "update" else {"title": title, "category": cat, "vault": {"name": vault}, "fields": fields}
+if url:
+    item["urls"] = [{"href": url, "primary": True}]
+sys.stdout.write(json.dumps(item))
+PY
+}
+feed() { printf '%s\0%s' "$USERNAME" "$VAL"; }   # bash builtin: no process, no argv
 
-args=()
-[ -n "$USERNAME" ] && args+=("username=$USERNAME")
-[ -n "$URL" ] && args+=(--url "$URL")
-
+OPERR=$(mktemp) || die "mktemp failed"
+trap 'rm -f "$OPERR"' EXIT
+op_failed() {  # print op's error only if it does not contain the value
+  local msg; msg=$(head -c 400 "$OPERR" | tr '\n' ' ')
+  case "$msg" in *"$VAL"*) msg="(error text withheld: it contained the value)" ;; esac
+  unset VAL; die "$1: $msg"
+}
 if [ "$UPDATE" = 1 ]; then
-  op item edit "$TITLE" --vault "$VAULT" "${FIELD}[password]=$VAL" ${args[@]+"${args[@]}"} >/dev/null 2>&1 \
-    || { unset VAL; die "op item edit failed (does '$TITLE' exist in $VAULT?)"; }
+  op item get "$TITLE" --vault "$VAULT" >/dev/null 2>&1 || { unset VAL; die "'$TITLE' not found in $VAULT (drop --update to create it)"; }
+  feed | item_json update | op item edit "$TITLE" --vault "$VAULT" >/dev/null 2>"$OPERR" || op_failed "op item edit failed"
 else
   op item get "$TITLE" --vault "$VAULT" >/dev/null 2>&1 && { unset VAL; die "'$TITLE' already exists in $VAULT. Use --update."; }
-  op item create --vault "$VAULT" --category "$CATEGORY" --title "$TITLE" "${FIELD}[password]=$VAL" ${args[@]+"${args[@]}"} >/dev/null 2>&1 \
-    || { unset VAL; die "op item create failed"; }
+  feed | item_json create | op item create --vault "$VAULT" >/dev/null 2>"$OPERR" || op_failed "op item create failed"
 fi
-unset VAL
-# confirm existence without revealing
-op item get "$TITLE" --vault "$VAULT" --fields "label=$FIELD" --format json 2>/dev/null | grep -q '"id"' \
+unset VAL USERNAME
+
+# confirm the field exists without revealing it (the JSON goes to python through a pipe, nothing is printed)
+op item get "$TITLE" --vault "$VAULT" --format json 2>/dev/null \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if any(f.get("label")==sys.argv[1] for f in d.get("fields",[])) else 1)' "$FIELD" \
   && printf 'OK op://%s/%s/%s\n' "$VAULT" "$TITLE" "$FIELD" \
   || die "saved, but could not confirm field '$FIELD'"

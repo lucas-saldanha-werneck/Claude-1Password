@@ -23,26 +23,27 @@ Also never: print a secret value, `op read` inside every Bash call (biometric pr
 `source <(op run ... env)` or `eval` (values with shell metacharacters execute as code),
 `bash -x` any script that handles a value (the trace prints it).
 
-## The guard hooks enforce this
+## The guard hooks back this up
 
-When installed as a plugin, `hooks/guard.py` blocks: secrets pasted by the user (erased before you
-see them), `op read` / `op item get --reveal` / `printenv` / `echo $TOKEN` / `cat .env*` /
-`op item create ...=value` in Bash, literal secrets in Write/Edit, and any final message of yours
-that asks the user to paste a secret. If a hook blocks you, do what its message says: run
-`op-store <title>` and use the `op://` reference or `$VAR`. Do not look for a way around it.
+When installed as a plugin, `hooks/guard.py` catches the common mistakes: secrets pasted by the
+user (erased before you see them), `op read` / `op item get` / `op run` / `printenv` / `echo $TOKEN`
+/ reading `.env*` or credential files (Bash, Read, Grep) / `op item create ...=value`, literal
+secrets in Write/Edit, and any final message of yours that asks the user to paste a secret.
+If a hook blocks you, do what its message says: run `op-store <title>` and use the `op://`
+reference or `$VAR`. Do not look for a way around it, and do not call `secret-dialog` yourself:
+its output is the secret.
 
 ## Commands (installed by `install.sh` into `~/.local/bin`)
 
 | Command | What it does |
 |---|---|
-| `op-store <title>` | Opens the native dialog (hidden field + eye). Saves an *API Credential* item, field `credential`, in vault `Claude`. Prints `OK op://Claude/<title>/credential`. |
+| `op-store <title>` | Opens the native dialog (hidden field + eye). Saves an *API Credential* item, field `credential`, in vault `Claude`. Prints `OK op://Claude/<title>/credential`. Single-line values only. |
 | `op-store --login <title> [--url URL]` | Asks username (visible) then password (hidden). Saves a *Login* item. |
 | `op-store --update <title>` | Replaces the value of an existing item. |
 | `op-store --vault V --field F <title>` | Other vault / field name. |
 | `op-env <command>` | Resolves every `op://` line of `~/.claude/.env.tpl` in ONE `op` call, exports them, then `exec`s the command. TTY preserved. Use `op-env claude` to start Claude Code. |
 | `op-env --check` | Shows op version, template, account, and how many keys resolve. Run this first when anything fails. |
 | `op-env --list` | Key names only, never values. |
-| `secret-dialog "Title" "Message" [--visible] [--timeout S]` | The dialog itself. Prints the text. Exit 2 cancelled, 3 timeout, 4 empty, 5 no backend. |
 
 ## Workflows
 
@@ -82,10 +83,12 @@ op-env --check
 
 - With the desktop-app integration, `op` can read **every vault** of the account while the app is
   unlocked, not only `Claude`. The vault is organisation, not isolation. For real isolation use a
-  **service account** scoped to one vault (`op service-account create name --vault Claude:read_items`)
-  and turn the app integration off.
-- Injected env vars protect the disk and the transcript. A process can still `printenv`. Do not
-  print environments; do not run `env`/`printenv`/`set` without filtering.
+  **service account** scoped to one vault (`op service-account create name --vault Claude:read_items,write_items`;
+  `write_items` is needed for `op-store`) and turn the app integration off. `op-env` removes
+  `OP_SERVICE_ACCOUNT_TOKEN` from the launched session on purpose (`OP_ENV_KEEP_SA=1` keeps it).
+- Injected env vars protect the disk and the transcript. Every subprocess, hook and stdio MCP server
+  started by Claude Code inherits **all** of them, and a process can still `printenv`. Do not print
+  environments; do not run `env`/`printenv`/`set` without filtering.
 - `op://` references reveal vault, item and field *names*. Keep them non-sensitive.
 - Claude Code's own login token lives in the OS keychain and is readable by same-user processes
   (reported by Silverfort, 2026-07). Unrelated to 1Password; nothing here changes it.

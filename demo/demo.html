@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Claude-1Password demo</title>
+<style>
+  :root { --bg:#0f1115; --term:#161920; --chrome:#22262e; --fg:#d9dde5; --dim:#7c8494; --amber:#f0b429; --red:#ff6b6b; --green:#58d68d; --blue:#7aa2f7; --violet:#c792ea; }
+  html,body { margin:0; background:var(--bg); }
+  body { width:960px; height:600px; overflow:hidden; position:relative; font-family:-apple-system,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif; -webkit-font-smoothing:antialiased; }
+  /* terminal window */
+  .win { position:absolute; left:24px; top:22px; width:912px; height:510px; background:var(--term); border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.06); overflow:hidden; }
+  .bar { height:36px; background:var(--chrome); display:flex; align-items:center; padding:0 14px; gap:8px; }
+  .dot { width:12px; height:12px; border-radius:50%; }
+  .bar .t { flex:1; text-align:center; color:var(--dim); font-size:12.5px; margin-right:52px; }
+  .term { padding:14px 22px; font-family:"SF Mono",Menlo,"JetBrains Mono",monospace; font-size:14px; line-height:1.55; color:var(--fg); white-space:pre-wrap; }
+  .line { min-height:21.7px; }
+  .p { color:var(--blue); }
+  .u { color:#fff; }
+  .caret { display:inline-block; width:8px; height:16px; background:#fff; vertical-align:-3px; margin-left:1px; }
+  .blk { margin:8px 0 10px; border-left:3px solid var(--amber); background:rgba(240,180,41,.08); padding:8px 12px; color:#f5d98b; border-radius:0 6px 6px 0; }
+  .blk b { color:var(--amber); font-weight:600; }
+  .c { color:var(--fg); }
+  .tool { color:var(--dim); }
+  .tool b { color:var(--fg); font-weight:500; }
+  .ok { color:var(--green); }
+  .dim { color:var(--dim); }
+  .vio { color:var(--violet); }
+  .hide { display:none; }
+  /* caption */
+  .cap { position:absolute; left:24px; right:24px; bottom:18px; height:38px; display:flex; align-items:center; gap:12px; color:#c9cfda; font-size:15px; }
+  .cap .n { width:26px; height:26px; border-radius:50%; background:#2b3140; color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; }
+  .cap.warn .n { background:var(--amber); color:#1a1200; }
+  .cap.good .n { background:var(--green); color:#04210f; }
+  /* dialog (macOS alert) */
+  .veil { position:absolute; inset:0; background:rgba(0,0,0,.18); opacity:0; transition:opacity .2s; }
+  .dlg { position:absolute; left:50%; top:50%; width:420px; transform:translate(-50%,-52%) scale(.96); opacity:0; background:#ececec; color:#111; border-radius:12px; box-shadow:0 30px 80px rgba(0,0,0,.55), 0 0 0 .5px rgba(0,0,0,.25); padding:18px 18px 16px; text-align:center; transition:opacity .18s, transform .18s; }
+  .dlg.on, .veil.on { opacity:1; }
+  .dlg.on { transform:translate(-50%,-52%) scale(1); }
+  .ico { width:64px; height:64px; margin:0 auto 10px; position:relative; }
+  .ico .app { width:64px; height:64px; border-radius:15px; background:linear-gradient(160deg,#1d5cff,#0c3bd1); box-shadow:inset 0 0 0 1px rgba(255,255,255,.25); }
+  .ico .app:after { content:"1"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:34px; font-weight:700; font-family:-apple-system,Helvetica,sans-serif; }
+  .ico .warn { position:absolute; right:-6px; bottom:-4px; width:26px; height:26px; }
+  .dlg h1 { font-size:13.5px; font-weight:700; margin:2px 0 6px; }
+  .dlg p { font-size:11.5px; margin:0 0 12px; line-height:1.45; color:#222; }
+  .fld { display:flex; gap:6px; align-items:center; }
+  .inp { flex:1; height:26px; background:#fff; border:1px solid #c6c6c6; border-radius:6px; text-align:left; padding:0 8px; font-family:"SF Mono",Menlo,monospace; font-size:12.5px; line-height:26px; color:#111; overflow:hidden; white-space:nowrap; position:relative; }
+  .inp.focus { box-shadow:0 0 0 3.5px rgba(0,122,255,.35); border-color:#7fb1ff; }
+  .inp .ph { color:#9a9a9a; }
+  .inp .dots { letter-spacing:2px; font-size:11px; }
+  .inp .car { display:inline-block; width:1px; height:14px; background:#111; vertical-align:-2px; }
+  .eye { width:34px; height:26px; border-radius:6px; background:#fff; border:1px solid #c6c6c6; display:flex; align-items:center; justify-content:center; }
+  .eye.on { background:#d7d7d7; }
+  .eye svg { width:18px; height:18px; }
+  .hint { font-size:10.5px; color:#6d6d6d; text-align:left; margin:6px 0 14px 2px; }
+  .hint.vis { color:#b25a00; font-weight:600; }
+  .btns { display:flex; gap:10px; }
+  .btn { flex:1; height:28px; border-radius:7px; background:#fff; border:1px solid #c9c9c9; font-size:12.5px; display:flex; align-items:center; justify-content:center; }
+  .btn.pri { background:linear-gradient(#3b8cff,#1a6dff); color:#fff; border-color:#1a5fd6; }
+  .btn.down { filter:brightness(.85); }
+  /* pointer */
+  .ptr { position:absolute; width:22px; height:28px; opacity:0; pointer-events:none; filter:drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
+  .ptr.on { opacity:1; }
+</style></head>
+<body>
+<div class="win">
+  <div class="bar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span><span class="t">op-env claude — ~/projects/app</span></div>
+  <div class="term" id="term"></div>
+</div>
+<div class="cap" id="cap"><span class="n" id="capn">1</span><span id="capt"></span></div>
+<div class="veil" id="veil"></div>
+<div class="dlg" id="dlg">
+  <div class="ico"><div class="app"></div>
+    <svg class="warn" viewBox="0 0 24 24"><path d="M12 2 1.5 21h21L12 2z" fill="#f7c000" stroke="#a37800" stroke-width=".8"/><path d="M12 8.5v6M12 17.2v.6" stroke="#111" stroke-width="2.2" stroke-linecap="round"/></svg>
+  </div>
+  <h1>1Password ← Claude Code</h1>
+  <p id="dmsg">Item 'Apify' → field 'credential' (vault Claude)<br><br>Paste the secret. The field is hidden; use the eye to check it. Claude cannot see this dialog.</p>
+  <div class="fld">
+    <div class="inp" id="inp"><span class="ph">paste here</span></div>
+    <div class="eye" id="eye">
+      <svg id="eyeo" viewBox="0 0 24 24" fill="none" stroke="#222" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+      <svg id="eyec" class="hide" viewBox="0 0 24 24" fill="none" stroke="#222" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/><path d="M4 4l16 16"/></svg>
+    </div>
+  </div>
+  <div class="hint" id="hint">Hidden field. Click the eye to check what you pasted.</div>
+  <div class="btns"><div class="btn" id="bcancel">Cancel</div><div class="btn pri" id="bok">OK</div></div>
+</div>
+<svg class="ptr" id="ptr" viewBox="0 0 22 28"><path d="M2 2v20l5-5 4 9 4-2-4-8h7z" fill="#fff" stroke="#000" stroke-width="1.6" stroke-linejoin="round"/></svg>
+
+<script>
+const KEY = "apify_api_kX9mQ2pLw7vR4tZbN3cF8hJ1";
+const L1 = "my apify key is " + KEY + " — save it please";
+const L2 = "store my apify key";
+const T = { // timeline (ms)
+  type1: 300,  enter1: 2700,  block: 2950,
+  type2: 6800, enter2: 8000,  skill: 8350, tool: 8850, say: 9350,
+  dlg: 10300,  focus: 10900,  paste: 11600,
+  ptrIn: 12300, eyeAt: 13100, eyeOn: 13400, eyeOff: 15500, okAt: 16300, okDown: 16650, dlgOff: 16900,
+  ok: 17250,   done: 17900,   end: 21500
+};
+const CPS = 42; // ms per char
+const $ = id => document.getElementById(id);
+
+function typed(text, start, t) {
+  if (t < start) return "";
+  return text.slice(0, Math.min(text.length, Math.floor((t - start) / CPS)));
+}
+function lerp(a, b, k) { return a + (b - a) * Math.max(0, Math.min(1, k)); }
+
+const CAPS = [
+  [0,        "1", "", "You paste an API key into Claude Code…"],
+  [T.block,  "2", "warn", "The hook blocks it. Erased before Claude ever sees it."],
+  [T.type2,  "3", "", "Ask normally. Claude runs op-store, a native dialog opens outside the chat."],
+  [T.paste,  "4", "", "Paste there. Check it with the eye. Press OK."],
+  [T.ok,     "5", "good", "Saved in 1Password. Claude only gets the op:// reference."],
+];
+
+function render(t) {
+  // ---- terminal
+  const lines = [];
+  const cur1 = typed(L1, T.type1, t);
+  const showCaret1 = t < T.enter1;
+  lines.push(`<div class="line"><span class="p">❯ </span><span class="u">${esc(cur1)}</span>${showCaret1 ? '<span class="caret"></span>' : ''}</div>`);
+  if (t >= T.block) {
+    lines.push(`<div class="blk"><b>⚠ UserPromptSubmit blocked by hook</b>\nClaude-1Password: your message looked like it contained a secret (a token in a known format). It was <b>not sent to Claude</b> and was erased.\nStore it safely instead: say <b>"store my Apify key"</b> — Claude opens a native dialog outside the chat.</div>`);
+  }
+  if (t >= T.type2) {
+    const cur2 = typed(L2, T.type2, t);
+    lines.push(`<div class="line"><span class="p">❯ </span><span class="u">${esc(cur2)}</span>${t < T.enter2 ? '<span class="caret"></span>' : ''}</div>`);
+  }
+  if (t >= T.skill) lines.push(`<div class="line dim">✻ Using <span class="vio">1password</span> skill</div>`);
+  if (t >= T.tool)  lines.push(`<div class="line tool">● <b>Bash</b>(op-store Apify)</div>`);
+  if (t >= T.say)   lines.push(`<div class="line c">  A native dialog just opened. Paste the key there and press OK. I can't see that window.</div>`);
+  if (t >= T.ok)    lines.push(`<div class="line ok">  ⎿  OK op://Claude/Apify/credential</div>`);
+  if (t >= T.done)  lines.push(`<div class="line c">  Saved. I added <span class="vio">APIFY_TOKEN=op://Claude/Apify/credential</span> to ~/.claude/.env.tpl.\n  Restart with <span class="vio">op-env claude</span> and $APIFY_TOKEN is available to every tool.</div>`);
+  if (t >= T.done + 500) lines.push(`<div class="line"><span class="p">❯ </span><span class="caret"></span></div>`);
+  $("term").innerHTML = lines.join("");
+
+  // ---- caption
+  let cap = CAPS[0];
+  for (const c of CAPS) if (t >= c[0]) cap = c;
+  $("capn").textContent = cap[1]; $("cap").className = "cap " + cap[2]; $("capt").textContent = cap[3];
+
+  // ---- dialog
+  const on = t >= T.dlg && t < T.dlgOff;
+  $("dlg").className = "dlg" + (on ? " on" : ""); $("veil").className = "veil" + (on ? " on" : "");
+  const focus = t >= T.focus && on;
+  const pasted = t >= T.paste && on;
+  const eyeOn = t >= T.eyeOn && t < T.eyeOff;
+  $("inp").className = "inp" + (focus ? " focus" : "");
+  if (!pasted) $("inp").innerHTML = focus ? '<span class="car"></span><span class="ph"> paste here</span>' : '<span class="ph">paste here</span>';
+  else if (eyeOn) $("inp").innerHTML = esc(KEY) + '<span class="car"></span>';
+  else $("inp").innerHTML = '<span class="dots">' + "●".repeat(KEY.length) + '</span><span class="car"></span>';
+  $("eye").className = "eye" + (eyeOn ? " on" : "");
+  $("eyeo").setAttribute("class", eyeOn ? "hide" : ""); $("eyec").setAttribute("class", eyeOn ? "" : "hide");
+  $("hint").className = "hint" + (eyeOn ? " vis" : "");
+  $("hint").textContent = eyeOn ? "VISIBLE. Click the eye to hide it again." : "Hidden field. Click the eye to check what you pasted.";
+  $("bok").className = "btn pri" + (t >= T.okDown && t < T.dlgOff ? " down" : "");
+
+  // ---- pointer (page coords)
+  const P = { start:[770, 490], eye:[682, 358], ok:[604, 420] };
+  let pos = null, show = false;
+  if (t >= T.ptrIn && t < T.dlgOff) {
+    show = true;
+    if (t < T.eyeAt) pos = [lerp(P.start[0], P.eye[0], (t - T.ptrIn) / (T.eyeAt - T.ptrIn)), lerp(P.start[1], P.eye[1], (t - T.ptrIn) / (T.eyeAt - T.ptrIn))];
+    else if (t < T.eyeOff + 250) pos = P.eye;
+    else pos = [lerp(P.eye[0], P.ok[0], (t - T.eyeOff - 250) / (T.okAt - T.eyeOff - 250)), lerp(P.eye[1], P.ok[1], (t - T.eyeOff - 250) / (T.okAt - T.eyeOff - 250))];
+  }
+  const ptr = $("ptr");
+  ptr.setAttribute("class", "ptr" + (show ? " on" : ""));
+  if (pos) { ptr.style.left = pos[0] + "px"; ptr.style.top = pos[1] + "px"; }
+}
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+
+window.setT = render;
+window.END = T.end;
+const q = new URLSearchParams(location.search);
+if (q.has("t")) render(+q.get("t"));
+else if (q.has("play")) { const t0 = performance.now(); (function f(){ render((performance.now() - t0) % T.end); requestAnimationFrame(f); })(); }
+else render(0);
+</script>
+</body></html>

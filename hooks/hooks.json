@@ -1,10 +1,10 @@
 {
-  "description": "Force secrets through 1Password: block secrets pasted in chat (erased before Claude sees them), block commands/files that would leak or hard-code a secret, and stop Claude from asking the user to paste a secret.",
+  "description": "Steer secrets through 1Password: block secrets pasted in chat (erased before Claude sees them), block commands/reads/writes that would leak or hard-code a secret, and stop Claude from asking the user to paste a secret. python3 or python must be on PATH; otherwise the hooks fail open.",
   "hooks": {
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" prompt", "timeout": 10 }
+          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" prompt'", "timeout": 10 }
         ]
       }
     ],
@@ -12,20 +12,26 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" bash", "timeout": 10 }
+          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" bash'", "timeout": 10 }
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" write", "timeout": 10 }
+          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" write'", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "Read|Grep|Glob",
+        "hooks": [
+          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" read'", "timeout": 10 }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" stop", "timeout": 10 }
+          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" stop'", "timeout": 10 }
         ]
       }
     ]

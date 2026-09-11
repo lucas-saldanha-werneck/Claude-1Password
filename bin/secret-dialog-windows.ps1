@@ -76,5 +76,9 @@ $timer.Stop()
 if ($script:timedOut) { exit 3 }
 if ($result -ne [System.Windows.Forms.DialogResult]::OK) { exit 2 }
 if ([string]::IsNullOrEmpty($box.Text)) { exit 4 }
-[Console]::Out.Write($box.Text)
+# UTF-8 bytes, no BOM, no newline: non-ASCII values must survive the console code page
+$bytes = [System.Text.UTF8Encoding]::new($false).GetBytes($box.Text)
+$stdout = [Console]::OpenStandardOutput()
+$stdout.Write($bytes, 0, $bytes.Length)
+$stdout.Flush()
 exit 0

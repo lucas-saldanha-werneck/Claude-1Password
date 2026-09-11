@@ -36,17 +36,17 @@ result = {"code": 2, "text": ""}
 
 def run_gtk4():
     gi.require_version("Gtk", "4.0")
-    from gi.repository import Gtk, GLib
+    from gi.repository import Gtk, GLib, Gio
 
-    app = Gtk.Application(application_id="dev.claude1password.secretdialog")
+    # NON_UNIQUE: a second dialog while one is open must be its own instance, not an
+    # "activate" forwarded to the first one (which would return immediately as cancelled).
+    app = Gtk.Application(application_id=None, flags=Gio.ApplicationFlags.NON_UNIQUE)
 
     def on_activate(app):
         win = Gtk.ApplicationWindow(application=app, title=title)
         win.set_default_size(420, -1)
         win.set_resizable(False)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        for m in (12, 12, 12, 12):
-            pass
         box.set_margin_top(14); box.set_margin_bottom(14); box.set_margin_start(14); box.set_margin_end(14)
         lbl = Gtk.Label(label=message, wrap=True, xalign=0)
         box.append(lbl)
@@ -73,11 +73,19 @@ def run_gtk4():
             result["text"] = entry.get_text()
             win.close()
 
+        def on_close_request(*_):
+            # window closed by the user (not through OK/Cancel/timeout): treat as cancelled
+            return False
+
+        def on_timeout():
+            finish(3)
+            return False
+
         ok.connect("clicked", lambda *_: finish(0))
         cancel.connect("clicked", lambda *_: finish(2))
         entry.connect("activate", lambda *_: finish(0))
-        win.connect("close-request", lambda *_: (result.__setitem__("code", result["code"] if result["code"] != 2 or result["text"] else 2), False)[1])
-        GLib.timeout_add_seconds(max(1, timeout), lambda: (finish(3), False)[1])
+        win.connect("close-request", on_close_request)
+        GLib.timeout_add_seconds(max(1, timeout), on_timeout)
         win.present()
         entry.grab_focus()
 
@@ -135,6 +143,6 @@ code, text = result["code"], result["text"]
 if code == 0 and not text:
     code = 4
 if code == 0:
-    sys.stdout.write(text)
+    sys.stdout.buffer.write(text.encode("utf-8"))   # bytes: no UnicodeEncodeError under a C locale
     sys.stdout.flush()
 sys.exit(code)

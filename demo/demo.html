@@ -57,8 +57,28 @@
   /* pointer */
   .ptr { position:absolute; width:22px; height:28px; opacity:0; pointer-events:none; filter:drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
   .ptr.on { opacity:1; }
+
+  /* ---- vertical 1080x1920 (TikTok / Reels / Shorts): ?v=1 ---- */
+  body.vert { width:1080px; height:1920px; }
+  body.vert .head { position:absolute; left:48px; right:48px; top:64px; color:#fff; }
+  body.vert .head h1 { margin:0; font-size:56px; font-weight:700; letter-spacing:-.5px; line-height:1.1; }
+  body.vert .head p { margin:10px 0 0; font-size:30px; color:#9aa3b5; }
+  body.vert .win { left:40px; top:250px; width:1000px; height:1180px; border-radius:20px; }
+  body.vert .bar { height:54px; padding:0 20px; gap:12px; }
+  body.vert .dot { width:18px; height:18px; }
+  body.vert .bar .t { font-size:19px; margin-right:78px; }
+  body.vert .term { padding:22px 30px; font-size:24px; line-height:1.5; }
+  body.vert .line { min-height:36px; }
+  body.vert .caret { width:13px; height:27px; vertical-align:-5px; }
+  body.vert .blk { margin:12px 0 16px; padding:14px 18px; border-left-width:5px; border-radius:0 10px 10px 0; }
+  body.vert .cap { left:48px; right:48px; bottom:110px; height:auto; min-height:120px; gap:22px; font-size:40px; line-height:1.25; color:#e6eaf2; }
+  body.vert .cap .n { width:64px; height:64px; min-width:64px; font-size:30px; }
+  body.vert .dlg { transform:translate(-50%,-50%) scale(1.6); }
+  body.vert .dlg.on { transform:translate(-50%,-50%) scale(1.6); }
+  body.vert .ptr { width:44px; height:56px; }
 </style></head>
 <body>
+<div class="head" id="head" hidden><h1>Claude Code + 1Password</h1><p>Secrets never enter the chat.</p></div>
 <div class="win">
   <div class="bar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span><span class="t">op-env claude — ~/projects/app</span></div>
   <div class="term" id="term"></div>
@@ -154,7 +174,7 @@ function render(t) {
   $("bok").className = "btn pri" + (t >= T.okDown && t < T.dlgOff ? " down" : "");
 
   // ---- pointer (page coords)
-  const P = { start:[770, 490], eye:[682, 358], ok:[604, 420] };
+  const P = VERT ? { start:[900, 1320], eye:[848, 1058], ok:[716, 1152] } : { start:[770, 490], eye:[682, 358], ok:[604, 420] };
   let pos = null, show = false;
   if (t >= T.ptrIn && t < T.dlgOff) {
     show = true;
@@ -171,6 +191,8 @@ function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
 window.setT = render;
 window.END = T.end;
 const q = new URLSearchParams(location.search);
+const VERT = q.get("v") === "1";
+if (VERT) { document.body.classList.add("vert"); document.getElementById("head").hidden = false; }
 if (q.has("t")) render(+q.get("t"));
 else if (q.has("play")) { const t0 = performance.now(); (function f(){ render((performance.now() - t0) % T.end); requestAnimationFrame(f); })(); }
 else render(0);

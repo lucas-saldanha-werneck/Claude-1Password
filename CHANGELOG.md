@@ -5,6 +5,11 @@ Versions: [Semantic Versioning](https://semver.org/). Release notes and download
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-11
+
+### Changed (breaking)
+- Plugin id renamed from `claude-1password` to `op-secrets` (marketplace submission rules: no brand names in the plugin name). Install: `claude plugin install op-secrets@op-secrets`. The repository name is unchanged.
+
 ### Added
 - `install.sh --wrap-claude`: installs `~/.local/opbin/claude`, a wrapper so plain `claude` starts through `op-env` (loop-safe via `OP_ENV_LOADED=1`).
 - `op-env --strict`: refuse to run when the secrets cannot be loaded.
@@ -67,7 +72,8 @@ Fixes from a Codex review and an adversarial review, plus the demo.
 - Claude Code skill `1password` with the rules.
 - Plugin manifest and marketplace file; `install.sh`; MIT license.
 
-[Unreleased]: https://github.com/lucas-saldanha-werneck/Claude-1Password/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/lucas-saldanha-werneck/Claude-1Password/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/lucas-saldanha-werneck/Claude-1Password/releases/tag/v0.4.0
 [0.3.0]: https://github.com/lucas-saldanha-werneck/Claude-1Password/releases/tag/v0.3.0
 [0.2.0]: https://github.com/lucas-saldanha-werneck/Claude-1Password/commit/35aa4be
 [0.1.0]: https://github.com/lucas-saldanha-werneck/Claude-1Password/commit/88bc2ad

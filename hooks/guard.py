@@ -168,7 +168,7 @@ def ev_bash(d):
               "Save it with `op-store <title>` and use $VAR / op:// instead." % why)
 
 
-TAMPER_PATH = re.compile(r"(?:claude-1password|Claude-1Password)[\\/].*hooks[\\/]|[\\/]hooks[\\/]guard\.py$|[\\/]hooks\.json$", re.I)
+TAMPER_PATH = re.compile(r"(?:claude-1password|Claude-1Password|op-secrets)[\\/].*hooks[\\/]|[\\/]hooks[\\/]guard\.py$|[\\/]hooks\.json$", re.I)
 
 
 def ev_write(d):

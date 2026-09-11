@@ -84,5 +84,5 @@ else
   warn "op not installed: macOS 'brew install --cask 1password-cli' | others: https://developer.1password.com/docs/cli/get-started/"
 fi
 echo
-echo "Hooks come only with the plugin:  claude plugin marketplace add lucas-saldanha-werneck/Claude-1Password && claude plugin install claude-1password@claude-1password"
+echo "Hooks come only with the plugin:  claude plugin marketplace add lucas-saldanha-werneck/Claude-1Password && claude plugin install op-secrets@op-secrets"
 echo "Next:  op-env --check      then      op-env claude"

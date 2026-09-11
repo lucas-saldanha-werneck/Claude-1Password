@@ -1,12 +1,12 @@
 {
-  "name": "claude-1password",
+  "name": "op-secrets",
   "description": "1Password for Claude Code: op-env launcher, op-store native secret dialog with reveal toggle",
   "owner": { "name": "Lucas Saldanha" },
   "plugins": [
     {
-      "name": "claude-1password",
+      "name": "op-secrets",
       "description": "1Password for Claude Code: op-env launcher, op-store native secret dialog with reveal toggle",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "source": "./",
       "author": { "name": "Lucas Saldanha" }
     }

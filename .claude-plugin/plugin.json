@@ -1,9 +1,18 @@
 {
   "name": "op-secrets",
-  "description": "1Password for Claude Code: launch with secrets injected (op-env), store secrets through a native dialog Claude never sees (op-store), native reveal-toggle dialogs on macOS/Windows/Linux.",
+  "description": "1Password for Claude Code. op-store saves a secret through a native dialog outside the chat (hidden field, reveal toggle) and pipes it to 1Password, never argv or env; op-env resolves op:// references once and launches Claude with the secrets injected, TTY intact; five guard hooks erase pasted secrets before the model sees them and block op read, printenv, .env reads and literal secrets in files. macOS, Windows, Linux.",
   "version": "0.4.0",
-  "author": { "name": "Lucas Saldanha" },
+  "author": {
+    "name": "Lucas Saldanha"
+  },
   "repository": "https://github.com/lucas-saldanha-werneck/Claude-1Password",
   "license": "MIT",
-  "keywords": ["1password", "secrets", "security", "op", "credentials", "claude-code"]
+  "keywords": [
+    "1password",
+    "secrets",
+    "security",
+    "op",
+    "credentials",
+    "claude-code"
+  ]
 }

@@ -7,13 +7,17 @@ chat, the transcript, the command line or your shell history.
 
 <sub>Rendered demo (`demo/demo.html`, `demo/render.sh`); the dialog is drawn after the real macOS one.</sub>
 
-Three small tools plus a Claude Code skill that teaches Claude to use them:
-
-| Tool | Job |
-|---|---|
-| **`op-store`** | Claude runs it; a **native dialog** opens *outside Claude's view*. You paste the key, click the **eye** to double-check it, press OK. It lands in 1Password. Claude only sees `OK op://Claude/Apify/credential`. |
-| **`op-env`** | `op-env claude` resolves every `op://` reference in `~/.claude/.env.tpl` with **one** biometric prompt, exports them, and `exec`s Claude Code with the TTY intact. Every tool, hook, script and MCP server inherits the variables. Nothing on disk. |
-| **`secret-dialog`** | The dialog. Native on each OS, with a reveal toggle: macOS (Swift), Windows (PowerShell/WinForms), Linux KDE (`kdialog`) and GNOME (GTK4 `PasswordEntry`). Fallbacks: AppleScript, zenity, `read -s`. |
+**Everything it does, in one paragraph.** `op-store <name>` opens a native dialog *outside the chat* —
+hidden field, an eye to check what you pasted — and pipes the secret into 1Password as JSON, so it never
+touches argv, the environment or your shell history (`--login` adds a username, `--update` replaces,
+`--field`/`--vault` choose where it lands); Claude gets back only `op://Vault/Item/field`. `op-env <command>`
+is the retrieval side: one `op` call resolves every `op://` reference in `~/.claude/.env.tpl`, one biometric
+prompt, then `exec` with the TTY intact, so Claude Code, its hooks, your scripts and MCP servers all read
+`$VAR` with nothing written to disk (`--list` prints names only, `--check` diagnoses, `--strict` refuses to
+run unprotected, and `install.sh --wrap-claude` makes plain `claude` do it). Five guard hooks then police the
+session: a secret you paste is erased before the model sees it, and `op read`, `printenv`, `.env` reads,
+literal secrets written to files and "paste your key here" replies are all blocked. A bundled skill teaches
+Claude the rules, and the dialog is native on macOS, Windows and Linux. MIT, no telemetry, no account to create.
 
 ```
 $ op-store Apify          # dialog opens → paste → eye → OK
@@ -26,7 +30,7 @@ $ op-env claude           # Touch ID once; $APIFY_TOKEN is now available to ever
 ## The guard hooks (plugin install only)
 
 The skill tells Claude the rules. The hooks catch the mistakes a well-behaved model still makes.
-`hooks/guard.py` runs on five events:
+`hooks/guard.py` is wired to five hooks across four events:
 
 | Event | What it catches | What happens |
 |---|---|---|

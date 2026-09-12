@@ -7,11 +7,12 @@ chat, the transcript, the command line or your shell history.
 
 <sub>Rendered demo (`demo/demo.html`, `demo/render.sh`); the dialog is drawn after the real macOS one.</sub>
 
-**What it does.** `op-store <name>` pops a native dialog outside the chat — with an eye to check your
-paste — and writes the secret to 1Password, never through argv or the environment. `op-env claude`
-resolves your `op://` references in one prompt and injects them into Claude Code, its hooks, your
-scripts and MCP servers. Five guard hooks erase secrets you paste and block `op read`, `printenv`,
-`.env` reads and "paste your key here" replies. Native dialogs on macOS, Windows and Linux. MIT.
+**What it does.** Paste an API key into the chat and it is deleted before Claude reads it. To save one,
+run `op-store` and a small window opens that Claude cannot see: paste there, use the eye button to check
+it, and it lands in 1Password. Start Claude with `op-env claude` and your keys are loaded from the vault
+with one fingerprint check, so Claude and anything it runs can use them without the key showing up on
+screen or on disk. It also stops Claude from printing your keys or opening your `.env` files.
+Mac, Windows, Linux. Free.
 
 ```
 $ op-store Apify          # dialog opens → paste → eye → OK

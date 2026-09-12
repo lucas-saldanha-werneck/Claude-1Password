@@ -1,6 +1,6 @@
 {
   "name": "op-secrets",
-  "description": "1Password for Claude Code. op-store saves a secret through a native dialog outside the chat (hidden field, reveal toggle) and pipes it to 1Password, never argv or env; op-env resolves op:// references once and launches Claude with the secrets injected, TTY intact; five guard hooks erase pasted secrets before the model sees them and block op read, printenv, .env reads and literal secrets in files. macOS, Windows, Linux.",
+  "description": "1Password for Claude Code. op-store saves a secret through a native dialog outside the chat and writes it to 1Password, never via argv or env. op-env injects your op:// references into Claude, its hooks and MCP servers. Five hooks erase pasted secrets and block op read, printenv and .env reads. macOS/Windows/Linux.",
   "version": "0.4.0",
   "author": {
     "name": "Lucas Saldanha"

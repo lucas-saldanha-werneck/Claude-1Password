@@ -7,17 +7,11 @@ chat, the transcript, the command line or your shell history.
 
 <sub>Rendered demo (`demo/demo.html`, `demo/render.sh`); the dialog is drawn after the real macOS one.</sub>
 
-**Everything it does, in one paragraph.** `op-store <name>` opens a native dialog *outside the chat* —
-hidden field, an eye to check what you pasted — and pipes the secret into 1Password as JSON, so it never
-touches argv, the environment or your shell history (`--login` adds a username, `--update` replaces,
-`--field`/`--vault` choose where it lands); Claude gets back only `op://Vault/Item/field`. `op-env <command>`
-is the retrieval side: one `op` call resolves every `op://` reference in `~/.claude/.env.tpl`, one biometric
-prompt, then `exec` with the TTY intact, so Claude Code, its hooks, your scripts and MCP servers all read
-`$VAR` with nothing written to disk (`--list` prints names only, `--check` diagnoses, `--strict` refuses to
-run unprotected, and `install.sh --wrap-claude` makes plain `claude` do it). Five guard hooks then police the
-session: a secret you paste is erased before the model sees it, and `op read`, `printenv`, `.env` reads,
-literal secrets written to files and "paste your key here" replies are all blocked. A bundled skill teaches
-Claude the rules, and the dialog is native on macOS, Windows and Linux. MIT, no telemetry, no account to create.
+**What it does.** `op-store <name>` pops a native dialog outside the chat — with an eye to check your
+paste — and writes the secret to 1Password, never through argv or the environment. `op-env claude`
+resolves your `op://` references in one prompt and injects them into Claude Code, its hooks, your
+scripts and MCP servers. Five guard hooks erase secrets you paste and block `op read`, `printenv`,
+`.env` reads and "paste your key here" replies. Native dialogs on macOS, Windows and Linux. MIT.
 
 ```
 $ op-store Apify          # dialog opens → paste → eye → OK

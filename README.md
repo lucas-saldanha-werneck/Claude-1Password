@@ -7,12 +7,13 @@ chat, the transcript, the command line or your shell history.
 
 <sub>Rendered demo (`demo/demo.html`, `demo/render.sh`); the dialog is drawn after the real macOS one.</sub>
 
-**What it does.** Paste an API key into the chat and it is deleted before Claude reads it. To save one,
-run `op-store` and a small window opens that Claude cannot see: paste there, use the eye button to check
-it, and it lands in 1Password. Start Claude with `op-env claude` and your keys are loaded from the vault
-with one fingerprint check, so Claude and anything it runs can use them without the key showing up on
-screen or on disk. It also stops Claude from printing your keys or opening your `.env` files.
-Mac, Windows, Linux. Free.
+**What it does.** Three things. **Save** a secret: run `op-store` and a small window opens that Claude
+cannot see — paste there, use the eye button to check it, and it lands in 1Password. **Read** one back:
+any item already in your vault works too; list the ones you want in `~/.claude/.env.tpl`, start with
+`op-env claude`, and one fingerprint check loads them for Claude and everything it runs — Claude gets
+the names, never the values, and nothing is written to disk. **Stay protected**: a key you paste into
+the chat is deleted before Claude reads it, and Claude is blocked from printing your keys or opening
+your `.env` files. Mac, Windows, Linux. Free.
 
 ```
 $ op-store Apify          # dialog opens → paste → eye → OK

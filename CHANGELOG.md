@@ -5,6 +5,18 @@ Versions: [Semantic Versioning](https://semver.org/). Release notes and download
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-18
+
+### Added
+- `op-env --check` prints a `macOS:` line when the terminal app has no Full Disk Access. On macOS 26 that is
+  the reason "«iTerm» would like to access data from other apps" keeps popping up for `op`: the CLI reaches the
+  desktop app through a socket inside 1Password's group container, and the App Data answer is kept only per
+  terminal session and program. The probe (`head -c 1` on TCC.db) makes no privacy request of its own.
+
+### Changed
+- README and skill Troubleshooting: the App Data popup above, and `op-env` loading 0 keys when two 1Password
+  items share a title ("More than one item matches") — delete the duplicate or reference the item by ID.
+
 ## [0.4.0] - 2026-09-11
 
 ### Changed (breaking)

@@ -134,6 +134,23 @@ HTTP MCP servers with a bearer token (must be added with `claude mcp add-json`):
 | Linux other | `zenity --password` | no | untested |
 | any TTY | `read -s` | no | tested |
 
+## Troubleshooting
+
+Start with `op-env --check`; each line names the fix. Two cases that look like something else:
+
+- **macOS 26: "«iTerm» (or Terminal) would like to access data from other apps", again and again, even after
+  Allow.** Not 1Password locking up. `op` reaches the desktop app through a socket inside 1Password's group
+  container, and macOS keeps that Allow only for the current terminal session and program
+  (`kTCCServiceSystemPolicyAppData`, seen with `log stream --predicate 'subsystem == "com.apple.TCC"'`).
+  Fix: System Settings → Privacy & Security → Full Disk Access → add the terminal app, restart it. With Full
+  Disk Access the earlier check passes and the popup never fires. `op-env --check` prints a `macOS:` line
+  while this is missing.
+- **`op-env` warns "no keys loaded" while 1Password is unlocked.** Run `op-env --check`: if `op says:
+  More than one item matches`, two items share a title. Delete the duplicate, or point the template at the
+  item ID from that message: `VAR=op://Vault/<item id>/field`.
+
+More cases (print mode, `/mcp` reconnect, dialog backends) in `skills/1password/SKILL.md` → Troubleshooting.
+
 ## Security model, honestly
 
 - **The vault does not isolate.** With the desktop-app integration, `op` can read every vault of your

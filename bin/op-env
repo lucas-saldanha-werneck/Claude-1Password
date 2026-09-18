@@ -94,6 +94,16 @@ if [ "$MODE" = check ]; then
     printf 'account:   NOT connected. 1Password app > Settings > Developer > "Integrate with 1Password CLI" (or set OP_SERVICE_ACCOUNT_TOKEN)\n'
     exit 1
   fi
+  # macOS 26+: `op` reaches the desktop app through a socket inside 1Password's group container.
+  # Without Full Disk Access for the terminal app, macOS asks "<Terminal> would like to access data
+  # from other apps" (kTCCServiceSystemPolicyAppData) again and again: the answer is kept only for the
+  # current terminal session and program, never stored. With Full Disk Access the earlier check passes
+  # and the popup never appears. Probing TCC.db makes no privacy request of its own (checked with
+  # `log stream --predicate 'subsystem == "com.apple.TCC"'` on macOS 26.6.2).
+  if [ "$(uname -s)" = Darwin ] && ! head -c 1 "$HOME/Library/Application Support/com.apple.TCC/TCC.db" >/dev/null 2>&1; then
+    printf 'macOS:     terminal has no Full Disk Access -> "would like to access data from other apps" popups keep coming back.\n'
+    printf '           Fix: System Settings > Privacy & Security > Full Disk Access > add your terminal app, then restart it.\n'
+  fi
   [ "$TOTAL" -eq 0 ] && { printf 'resolved:  0 of 0 keys (template has no active keys yet; add one with op-store)\n'; exit 0; }
   n=0
   while IFS= read -r -d '' k && IFS= read -r -d '' v; do n=$((n+1)); done < <(resolve)

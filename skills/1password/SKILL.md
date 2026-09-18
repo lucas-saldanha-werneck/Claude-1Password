@@ -98,6 +98,13 @@ op-env --check
 - Claude starts in `--print` mode / "No terminal detected": you used `op run -- claude`. Use `op-env claude`.
 - `op whoami` says "account is not signed in" but everything works: known with app integration; ignore.
 - Repeated biometric prompts: something calls `op` per command. Move the secret to the template and use `op-env`.
+- macOS 26: "«iTerm/Terminal» would like to access data from other apps" pops up again and again, even after Allow:
+  `op` talks to the desktop app through a socket inside 1Password's group container, and macOS keeps that
+  answer only for the current terminal session and program. Fix: System Settings → Privacy & Security →
+  Full Disk Access → add the terminal app, restart it. `op-env --check` prints a `macOS:` line while this is missing.
+- `op-env` loads 0 keys and `op-env --check` says "More than one item matches": two items share a title.
+  Delete the duplicate in 1Password, or reference the item by ID in the template: `VAR=op://Vault/<item id>/field`
+  (the IDs are in that same error message).
 - MCP server fails after `/mcp` reconnect: reconnect spawns non-interactively, `op` cannot prompt. Prefer `${VAR}` from `op-env`.
 - Dialog never appears (macOS): the binary `secret-dialog-macos` is missing → run `install.sh` (needs `swiftc`); falls back to AppleScript (no eye).
 - Linux: KDE uses `kdialog --password` (eye built in, KDE Frameworks ≥ 5.84); GNOME uses GTK4 `Gtk.PasswordEntry` via `python3-gi`; else `zenity` (no eye); else `read -s` in a TTY.

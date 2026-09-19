@@ -24,6 +24,19 @@ if positional.count > 1 { message = positional[1] }
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 
+// Without an Edit menu, an AppKit app gets no ⌘V/⌘C/⌘X/⌘A key equivalents —
+// the field would only accept typing or a right-click → Paste.
+let mainMenu = NSMenu()
+let editItem = NSMenuItem()
+let editMenu = NSMenu(title: "Edit")
+editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+editItem.submenu = editMenu
+mainMenu.addItem(editItem)
+app.mainMenu = mainMenu
+
 let alert = NSAlert()
 alert.messageText = title
 alert.informativeText = message

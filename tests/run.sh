@@ -171,6 +171,36 @@ if bash "$HERE/bin/op-store" 2>&1 | grep -q "missing title"; then pass=$((pass+1
 SECRET_DIALOG_BACKEND=tty bash "$HERE/bin/secret-dialog" "t" "m" </dev/null >/dev/null 2>&1; rc=$?
 if [ $rc -eq 5 ]; then pass=$((pass+1)); echo "  ok    secret-dialog tty backend without a tty → 5"; else fail=$((fail+1)); echo "  FAIL  secret-dialog tty rc=$rc"; fi
 
+# op-store end to end with a fake dialog and a fake `op`: the value the dialog returns must be the value `op`
+# receives (regression: v0.3.0–0.4.1 sent an empty value because the python heredoc replaced the data pipe).
+FAKE=$(mktemp -d)
+cp "$HERE/bin/op-store" "$FAKE/op-store"
+cat > "$FAKE/secret-dialog" <<'SH'
+#!/bin/bash
+case " $* " in *" --visible "*) printf 'fakeuser' ;; *) printf 'fakevalue123' ;; esac
+SH
+cat > "$FAKE/op" <<'SH'
+#!/bin/bash
+case "$1 $2" in
+  "vault list"|"vault get") exit 0 ;;
+  "item create"|"item edit") cat > "$FAKE_OP_DIR/item.json"; exit 0 ;;
+  "item get") [ -f "$FAKE_OP_DIR/item.json" ] || exit 1; case " $* " in *" --format json "*) cat "$FAKE_OP_DIR/item.json" ;; esac; exit 0 ;;
+  "item delete") rm -f "$FAKE_OP_DIR/item.json"; exit 0 ;;
+esac
+exit 1
+SH
+chmod +x "$FAKE/op-store" "$FAKE/secret-dialog" "$FAKE/op"
+opstore_field() {  # $1 field id → prints its value from the JSON the fake `op` received
+  "$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); print(next((f.get("value","") for f in d.get("fields",[]) if f.get("id")==sys.argv[2]), "<missing>"))' "$FAKE/item.json" "$1"
+}
+outp=$(FAKE_OP_DIR="$FAKE" PATH="$FAKE:$PATH" bash "$FAKE/op-store" --login zz-test --url https://example.com 2>&1); rc=$?
+if [ $rc -eq 0 ] && [ "$(opstore_field password)" = "fakevalue123" ] && [ "$(opstore_field username)" = "fakeuser" ]; then pass=$((pass+1)); echo "  ok    op-store --login sends the dialog values to op"
+else fail=$((fail+1)); echo "  FAIL  op-store --login: rc=$rc password=$(opstore_field password) username=$(opstore_field username) out=${outp:0:100}"; fi
+outp=$(FAKE_OP_DIR="$FAKE" PATH="$FAKE:$PATH" bash "$FAKE/op-store" --update --field password zz-test 2>&1); rc=$?
+if [ $rc -eq 0 ] && [ "$(opstore_field password)" = "fakevalue123" ] && [ "$(opstore_field username)" = "fakeuser" ]; then pass=$((pass+1)); echo "  ok    op-store --update sends the dialog value to op and keeps the other fields"
+else fail=$((fail+1)); echo "  FAIL  op-store --update: rc=$rc password=$(opstore_field password) username=$(opstore_field username) out=${outp:0:100}"; fi
+rm -rf "$FAKE"
+
 echo
 echo "passed: $pass  failed: $fail  known gaps: $known"
 [ $fail -eq 0 ]

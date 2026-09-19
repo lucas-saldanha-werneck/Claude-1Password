@@ -5,6 +5,28 @@ Versions: [Semantic Versioning](https://semver.org/). Release notes and download
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-18
+
+### Fixed
+- `op-store` saved every item with an EMPTY value since 0.3.0 (2026-09-11), and still printed `OK`. The python
+  helper that builds the item JSON was started as `python3 - <<'PY'`: the heredoc took over stdin, so the
+  username and the value piped in from the dialog never reached it. The helper now takes its code through
+  `-c` and reads the data from the pipe, refuses to build an item with an empty value, and the final check
+  fails loudly when the field is missing **or empty** in 1Password.
+  **If you saved anything with `op-store` between 0.3.0 and 0.4.1, open those items in the 1Password app:
+  the field is blank. Run `op-store --update <title>` to fill it.**
+- `op-store --update` wiped the other fields of the item (username, notes…): `op item edit` with a JSON
+  template replaces the whole field list. It now fetches the current item (through a pipe, never printed),
+  changes only the target field and sends the rest back unchanged.
+- `op-store --update --field password` on a Login item added a second, empty `password` field instead of
+  replacing the real one (the field had no `purpose`). A field named `password` now always carries
+  `purpose: PASSWORD`. If you have an item with two `password` fields, delete the empty one in the app.
+- macOS dialog: ⌘V / ⌘C / ⌘X / ⌘A did nothing in the field (only typing or right-click → Paste worked).
+  An AppKit app without an Edit menu has no key equivalents; the dialog now installs a minimal one.
+- `tests/run.sh`: end-to-end test of `op-store --login` and `--update` with a fake dialog and a fake `op`,
+  asserting that the value the dialog returns is the value `op` receives and that `--update` keeps the
+  other fields.
+
 ## [0.4.1] - 2026-09-18
 
 ### Added

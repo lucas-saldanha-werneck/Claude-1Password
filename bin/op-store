@@ -76,22 +76,40 @@ VAL=$(ask "Item '$TITLE' → field '$FIELD' (vault $VAULT)\n\nPaste the secret. 
 # Build the item JSON in python and pipe it to op. The secret goes bash → python → op through
 # pipes only: never argv, never the environment (both readable with `ps` by same-user processes).
 # Non-secret parameters travel as argv of the python helper.
-item_json() {  # $1 = create|update ; stdin = username NUL value
-  python3 - "$1" "$TITLE" "$VAULT" "$FIELD" "$CATEGORY" "$URL" "$LOGIN" <<'PY'
-import json, sys
+# The python code goes in through -c, NOT a heredoc: a heredoc would replace stdin, and the piped
+# username/value would never reach python (that bug shipped in 0.3.0–0.4.1: every item saved empty).
+ITEM_PY='
+import json, subprocess, sys
 mode, title, vault, field, cat, url, login = sys.argv[1:8]
 user, _, val = sys.stdin.buffer.read().decode("utf-8").partition("\0")
+if not val:
+    sys.exit(3)   # nothing arrived through the pipe: refuse to build an empty item
 f = {"id": field, "type": "CONCEALED", "label": field, "value": val}
-if login == "1":
-    f["purpose"] = "PASSWORD"
-fields = [f]
-if user:
-    fields.insert(0, {"id": "username", "type": "STRING", "purpose": "USERNAME", "label": "username", "value": user})
-item = {"fields": fields} if mode == "update" else {"title": title, "category": cat, "vault": {"name": vault}, "fields": fields}
+if login == "1" or field == "password":
+    f["purpose"] = "PASSWORD"   # without it, `op item edit` on a Login item ADDS a second empty "password" field
+u = {"id": "username", "type": "STRING", "purpose": "USERNAME", "label": "username", "value": user}
+if mode == "update":
+    # `op item edit` with a JSON template REPLACES the whole field list: start from the current item (fetched
+    # here, through a pipe, never printed) and change only the target field, so username & co. survive.
+    item = json.loads(subprocess.run(["op", "item", "get", title, "--vault", vault, "--format", "json"],
+                                     capture_output=True, text=True, check=True).stdout)
+    fields = item.setdefault("fields", [])
+    def put(new):
+        for x in fields:
+            if x.get("id") == new["id"] or (x.get("label") == new["label"] and not x.get("section")):
+                x["value"] = new["value"]; return
+        fields.append(new)
+    put(f)
+    if user:
+        put(u)
+else:
+    item = {"title": title, "category": cat, "vault": {"name": vault}, "fields": ([u] if user else []) + [f]}
 if url:
     item["urls"] = [{"href": url, "primary": True}]
 sys.stdout.write(json.dumps(item))
-PY
+'
+item_json() {  # $1 = create|update ; stdin = username NUL value
+  python3 -c "$ITEM_PY" "$1" "$TITLE" "$VAULT" "$FIELD" "$CATEGORY" "$URL" "$LOGIN"
 }
 feed() { printf '%s\0%s' "$USERNAME" "$VAL"; }   # bash builtin: no process, no argv
 
@@ -104,15 +122,17 @@ op_failed() {  # print op's error only if it does not contain the value
 }
 if [ "$UPDATE" = 1 ]; then
   op item get "$TITLE" --vault "$VAULT" >/dev/null 2>&1 || { unset VAL; die "'$TITLE' not found in $VAULT (drop --update to create it)"; }
-  feed | item_json update | op item edit "$TITLE" --vault "$VAULT" >/dev/null 2>"$OPERR" || op_failed "op item edit failed"
+  JSON=$(feed | item_json update) || { unset VAL; die "could not build the item (empty value). Nothing saved."; }
+  printf '%s' "$JSON" | op item edit "$TITLE" --vault "$VAULT" >/dev/null 2>"$OPERR" || op_failed "op item edit failed"
 else
   op item get "$TITLE" --vault "$VAULT" >/dev/null 2>&1 && { unset VAL; die "'$TITLE' already exists in $VAULT. Use --update."; }
-  feed | item_json create | op item create --vault "$VAULT" >/dev/null 2>"$OPERR" || op_failed "op item create failed"
+  JSON=$(feed | item_json create) || { unset VAL; die "could not build the item (empty value). Nothing saved."; }
+  printf '%s' "$JSON" | op item create --vault "$VAULT" >/dev/null 2>"$OPERR" || op_failed "op item create failed"
 fi
-unset VAL USERNAME
+unset VAL USERNAME JSON
 
-# confirm the field exists without revealing it (the JSON goes to python through a pipe, nothing is printed)
+# confirm the field exists AND is not empty, without revealing it (the JSON goes to python through a pipe, nothing is printed)
 op item get "$TITLE" --vault "$VAULT" --format json 2>/dev/null \
-  | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if any(f.get("label")==sys.argv[1] for f in d.get("fields",[])) else 1)' "$FIELD" \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if any(f.get("label")==sys.argv[1] and f.get("value") for f in d.get("fields",[])) else 1)' "$FIELD" \
   && printf 'OK op://%s/%s/%s\n' "$VAULT" "$TITLE" "$FIELD" \
-  || die "saved, but could not confirm field '$FIELD'"
+  || die "saved, but field '$FIELD' is missing or EMPTY in 1Password. Check the item in the app."

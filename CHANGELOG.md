@@ -5,6 +5,29 @@ Versions: [Semantic Versioning](https://semver.org/). Release notes and download
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-24
+
+### Changed
+- The guard judges a Bash command by what it does, not by the words in it. Replayed against every block from
+  2026-09-11 to 09-24 (99 unique): 77 were false alarms and are now allowed; the 22 real catches still block.
+  - Quoted search patterns (`grep -E 'op read|op run'`), heredocs that only write a file, and `jq` filters
+    (`.env`, `.key`) are data, not commands. Quotes run by `bash -c`, `ssh host` or `eval` are still checked.
+  - Secret files may be listed, moved, copied, counted, sourced, or read for variable NAMES only
+    (`grep -o '^[A-Z_]*'`, `grep -c`, `cut -d= -f1`, `sed 's/=.*//'`, `awk -F= '{print $1}'`, `| wc`,
+    `VAR=$(...)`). Printing values is still blocked. `.env.tpl.bak-*` and public CA bundles (`cacert.pem`) are not secret files.
+  - `env | grep X` is allowed when a later stage masks the values; `printenv NAME` is allowed for names that
+    do not look secret; `set`/`export -p` only match as real commands. `2>/dev/null` no longer counts as hiding output.
+  - Script dumps match only explicit whole-environment prints (`print(os.environ)`), not `os.environ["TMPDIR"]`.
+  - `secret-dialog` blocks only when run, not when read or compiled. `op item edit` allows username/url fields and `--help`.
+- Literal-secret detection skips code: `process.env.X`, `config.a.b`, `obj.camelCase`, function calls, regex
+  fragments, `ENV_VAR_NAME` placeholders, `user:${TOK}@` URLs, and a private-key header without a key body.
+- The stop check matches whole words only ("computador", "TypeSafe", "puts", "1Password", "43k tokens" were
+  false hits), ignores code and quoted text, and no longer treats a bare "your" as a request.
+
+### Security
+- New side doors closed while loosening: `find -exec`, `tar -O`/`unzip -p`, `cp .env /dev/stdout`, `grep -o '.*'`,
+  a second `sed -e` script, `cat <<EOF | sh`, `set -x` + `source .env`, `declare -p SECRET`. 204 tests pass.
+
 ## [0.4.2] - 2026-09-18
 
 ### Fixed
@@ -106,7 +129,8 @@ Fixes from a Codex review and an adversarial review, plus the demo.
 - Claude Code skill `1password` with the rules.
 - Plugin manifest and marketplace file; `install.sh`; MIT license.
 
-[Unreleased]: https://github.com/lucas-saldanha-werneck/Claude-1Password/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/lucas-saldanha-werneck/Claude-1Password/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/lucas-saldanha-werneck/Claude-1Password/releases/tag/v0.5.0
 [0.4.0]: https://github.com/lucas-saldanha-werneck/Claude-1Password/releases/tag/v0.4.0
 [0.3.0]: https://github.com/lucas-saldanha-werneck/Claude-1Password/releases/tag/v0.3.0
 [0.2.0]: https://github.com/lucas-saldanha-werneck/Claude-1Password/commit/35aa4be

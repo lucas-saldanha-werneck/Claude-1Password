@@ -151,6 +151,300 @@ expect allow stop "$(j '{"stop_hook_active":true,"last_assistant_message":"Pleas
 expect allow stop "$(j '{"stop_hook_active":false,"last_assistant_message":"Done. The token is stored as op://Claude/Apify/credential."}')"
 expect allow stop "$(j '{"stop_hook_active":false}')"
 
+# v0.5 regressions: every case below is a real false alarm (allow) or a real catch (block) from 2026-09-11..24.
+# Raw text on stdin, so no JSON escaping. Fake values are glued at runtime so this file holds no literal secret.
+FAKEPW="Hello.Wor""ld2024"
+FAKEJWT="eyJ""hbGciOiJIUzI1NiJ9.eyJ""zdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnopqrst"
+FAKEBODY=$(printf 'A%.0s' $(seq 1 64))
+PKH="-----BEGIN PRIV""ATE KEY-----"
+fill() { sed -e "s|@@PW@@|$FAKEPW|g" -e "s|@@JWT@@|$FAKEJWT|g" -e "s|@@BODY@@|$FAKEBODY|g" -e "s|@@PKH@@|$PKH|g"; }
+tojson() { "$PY" -c 'import json,sys; a=sys.argv; t=sys.stdin.read().rstrip("\n")
+if a[1]=="bash": print(json.dumps({"tool_name":"Bash","tool_input":{"command":t}}))
+elif a[1]=="write": print(json.dumps({"tool_name":"Write","tool_input":{"file_path":a[2],"content":t}}))
+else: print(json.dumps({"stop_hook_active":False,"last_assistant_message":t}))' "$@"; }
+xb() { expect "$1" bash "$(fill | tojson bash)"; }            # xb <block|allow> <<'X' command X
+xw() { expect "$1" write "$(fill | tojson write "$2")"; }     # xw <block|allow> <path> <<'X' content X
+xs() { expect "$1" stop "$(fill | tojson stop)"; }            # xs <block|allow> <<'X' message X
+
+echo "v0.5 bash: data is not a command (quoted patterns, heredocs that write files)"
+xb allow <<'X'
+grep -nE 'env\.tpl|OP_ENV_|op run|op read' ~/.local/bin/op-env
+X
+xb allow <<'X'
+ps -eo pid,command | grep -E 'audit.sh|op item get' | grep -v grep
+X
+xb allow <<'X'
+agent-browser --help | grep -iE "^  (fill|type|click|select|set)" | head
+X
+xb allow <<'X'
+cat >> notes.md <<'EOF'
+| Set | US$1,209 |
+Run `op read` never; keep keys in .env.tpl, not .env
+EOF
+X
+xb allow <<'X'
+python3 - <<'PY'
+import collections, os
+c = collections.defaultdict(set)
+p = os.environ["TMPDIR"] + "/att.json"
+env = dict(os.environ)
+PY
+X
+xb allow <<'X'
+jq -r '.env // {} | keys[]' ~/.claude/settings.json
+X
+xb allow <<'X'
+jq -r '.skillOverrides | to_entries[] | "\(.key)=\(.value)"' ~/.claude/settings.json
+X
+xb allow <<'X'
+cd zz_tools/Claude-1Password && cat -n bin/secret-dialog && swiftc -O -o bin/secret-dialog-macos src/secret-dialog-macos.swift && git diff --stat src/secret-dialog-macos.swift
+X
+xb allow <<'X'
+op item edit --help | sed -n 1,60p
+X
+xb allow <<'X'
+op item edit PCBWay --vault Private username=lucas@example.com
+X
+xb allow <<'X'
+grep -n -E 'process.env|Bun.env|KEY' src/crypto.ts
+X
+echo "v0.5 bash: secret files — names, counts, metadata and sourcing are fine"
+xb allow <<'X'
+sed -n 's/=.*//p' retell-agent/.env
+X
+xb allow <<'X'
+grep -o '^[A-Z_]*' "$HOME/.claude/.env.web" | tr '\n' ' '
+X
+xb allow <<'X'
+grep -oE '^[A-Z_]+=' ~/.claude/.env.web
+X
+xb allow <<'X'
+awk -F= '/^[A-Z_]+=/{print $1}' ~/.claude/.env.web
+X
+xb allow <<'X'
+cut -d= -f1 .env
+X
+xb allow <<'X'
+sed 's/=.*/=<hidden>/' ~/.config/llm-council/.env | grep -in key
+X
+xb allow <<'X'
+f=~/.config/llm-council/.env; [ -s "$f" ] && echo "$(wc -c < "$f") bytes, $(grep -c '^OPENROUTER_API_KEY=' "$f") line"
+X
+xb allow <<'X'
+ssh nova 'cd /opt/app && grep -oE "^[A-Z0-9_]+" .env | grep -iE "HC|HEALTH"'
+X
+xb allow <<'X'
+mv .env.txt .env && chmod 600 .env && ls -la .env && (grep -qx '.env' .gitignore || echo ".env" >> .gitignore)
+X
+xb allow <<'X'
+cp ~/.claude/.env.tpl ~/.claude/.env.tpl.bak-20260918
+X
+xb allow <<'X'
+set -a; . ./.env; set +a; curl -s -o out.json -H "Authorization: Bearer $RETELL_API_KEY" https://api.example.com/calls
+X
+xb allow <<'X'
+source ~/.claude/skills/cloudflare-dns-manager/.env && curl -s -o zones.json -H "X-Auth-Key: $CF_API_KEY" https://api.cloudflare.com/client/v4/zones
+X
+xb allow <<'X'
+ssh -o ConnectTimeout=15 nova 'docker exec app sh -c ". /secrets/.env; exec python3 /app/bin/sync.py status"'
+X
+xb allow <<'X'
+T=$(grep -o 'APIFY_TOKEN=\S*' ~/.claude/.env.apify | cut -d= -f2); curl -s -o limits.json "https://api.apify.com/v2/users/me/limits?token=$T"
+X
+xb allow <<'X'
+cd /opt/openwa && cat > .env <<'E'
+ENGINE_TYPE=whatsapp-web.js
+TZ=America/Sao_Paulo
+E
+chmod 600 .env
+X
+xb allow <<'X'
+unzip -q probe.zip -d pz && ls pz/CameraProbe/_internal/certifi/cacert.pem
+X
+xb block <<'X'
+cat "$HOME/project/.env"
+X
+xb block <<'X'
+grep TOKEN .env
+X
+xb block <<'X'
+grep -o 'API_KEY=.*' .env
+X
+xb block <<'X'
+grep -n 'REPAIR' .env .env.example 2>/dev/null | sed -E 's/(=.{6}).*/\1.../'
+X
+xb block <<'X'
+awk -F= '{print $2}' .env
+X
+xb block <<'X'
+cut -d= -f2 .env
+X
+xb block <<'X'
+head -c 40 ~/.config/llm-council/.env
+X
+xb block <<'X'
+ssh nova 'cat /opt/app/.env'
+X
+xb block <<'X'
+bash -c "tail -3 .env"
+X
+xb block <<'X'
+python3 - <<'PY'
+print(open('.env').read())
+PY
+X
+xb block <<'X'
+source .env && env
+X
+echo "v0.5 bash: environment"
+xb allow <<'X'
+env | grep -i -E "GOOGLE_WORKSPACE|GWS" | sed 's/=.*/=<set>/'
+X
+xb allow <<'X'
+env | grep -o -E '^OP_[A-Z_]+' | sort -u
+X
+xb allow <<'X'
+env | grep -c '^OP_ENV_LOADED'
+X
+xb allow <<'X'
+printenv AGENT_BROWSER_CDP AGENT_BROWSER_HEADED CHROME_REAL_PORT
+X
+xb allow <<'X'
+ssh nova 'docker compose exec -T worker sh -c "printenv GOOGLE_SA_PRIVATE_KEY | wc -c"'
+X
+xb block <<'X'
+env | grep -iE 'agent_browser|cdp|chrome'
+X
+xb block <<'X'
+printenv OPENAI_API_KEY
+X
+xb block <<'X'
+for v in CLAUDE_MODEL CLAUDE_CODE_MODEL; do printf "%-32s %s\n" "$v" "$(printenv "$v" 2>/dev/null || echo '(unset)')"; done
+X
+xb block <<'X'
+X="$(op read op://Claude/x/credential)"; curl -H "Authorization: Bearer $X" https://example.com
+X
+xb block <<'X'
+bash bin/secret-dialog "Title" "Paste your key"
+X
+xb block <<'X'
+op item edit PCBWay --vault Private password=@@PW@@
+X
+echo "v0.5 bash: literal values"
+xb allow <<'X'
+TOK=$(gh auth token) && git push "https://x-access-token:${TOK}@github.com/owner/repo.git" main
+X
+xb allow <<'X'
+opencli browser ig eval "(async()=>{const csrf=(document.cookie.match(/csrftoken=([^;]+)/)||[])[1];return csrf.length})()"
+X
+xb block <<'X'
+opencli browser fv2 open "https://app.example.com/verify-email?token=@@JWT@@"
+X
+echo "v0.5 write: code is not a secret"
+xw allow src/drill.mjs <<'X'
+const API_KEY = process.env.RETELL_API_KEY;
+const bearer = process.env.RETELL_API_KEY;
+X
+xw allow src/pluggy.js <<'X'
+const clientSecret = process.env.PLUGGY_CLIENT_SECRET
+X
+xw allow src/kv.ts <<'X'
+const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+const client = new Redis({ url, token: process.env.UPSTASH_REDIS_REST_TOKEN });
+X
+xw allow scripts/spike.ts <<'X'
+const sessionToken: start.authenticationToken,
+X
+xw allow tests/fixtures/google_events.py <<'X'
+    "nextSyncToken": "SYNC_TOKEN_3",
+X
+xw allow src/prova.ts <<'X'
+  saPrivateKey: config.google.saPrivateKey,
+X
+xw allow /tmp/reels/clips.js <<'X'
+const ck=(document.cookie.match(/csrftoken=([^;]+)/)||[])[1];
+X
+xw allow docs/plano.md <<'X'
+The secret is a PEM: @@PKH@@\n...\n-----END KEY-----
+X
+xw block config.py <<'X'
+password = "@@PW@@"
+X
+xw block key.txt <<'X'
+@@PKH@@
+@@BODY@@
+X
+echo "v0.5 stop: names, quotes and word parts are not requests"
+xs allow <<'X'
+Your key is in 1Password as op://Claude/OpenRouter API/credential.
+X
+xs allow <<'X'
+Your skill list is about 43k tokens, so the rest is cheap.
+X
+xs allow <<'X'
+Chamo a API da TypeSafe, com a chave `TYPESAFE_API_KEY` no op-env.
+X
+xs allow <<'X'
+Rode no computador: a biblioteca instagrapi, logando com a senha, faz isso.
+X
+xs allow <<'X'
+Ignore the agent's version of the command. It puts the password on the command line.
+X
+xs allow <<'X'
+It needs your password, so I cannot run it.
+X
+xs allow <<'X'
+Se falhar de novo, cole o erro — mas o `secret list` funcionando diz que a porta está aberta.
+X
+xs allow <<'X'
+The line in your op-env template: `SUPABASE_ACCESS_TOKEN=op://Claude/Supabase/credential`.
+X
+xs block <<'X'
+Run this in this session. Put your real e-mail, password, and 8-digit CEP in the quotes.
+X
+xs block <<'X'
+Me manda o token do Supabase aqui que eu configuro.
+X
+echo "v0.5 bash: the new allowances do not open side doors"
+xb block <<'X'
+find . -name .env -exec cat {} \;
+X
+xb allow <<'X'
+find . -name .env
+X
+xb block <<'X'
+tar -xOf backup.tar .env
+X
+xb block <<'X'
+unzip -p app.zip .env
+X
+xb block <<'X'
+cp .env /dev/stdout
+X
+xb block <<'X'
+grep -o '.*' .env
+X
+xb block <<'X'
+sed -e 's/=.*//' -e p .env
+X
+xb block <<'X'
+cat <<'EOF' | sh
+cat .env
+EOF
+X
+xb block <<'X'
+set -x; . ./.env; curl -s -o o.json https://example.com
+X
+xb block <<'X'
+declare -p OPENAI_API_KEY
+X
+xb allow <<'X'
+declare -p PATH
+X
+
+echo "bash known gaps (v0.5)"
+known_gap bash "$(printf '%s' 'X=$(cat .env); echo "$X"' | tojson bash)"
+
 echo "block messages never contain the value"
 outp=$(printf '%s' "$(b '"export GITHUB_TOKEN=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef123456"')" | "$PY" "$G" bash 2>&1)
 if printf '%s' "$outp" | grep -q "ghp_ABCDEFGHIJ"; then fail=$((fail+1)); echo "  FAIL  block message leaked the value"; else pass=$((pass+1)); echo "  ok    bash block message has no value"; fi

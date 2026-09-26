@@ -38,6 +38,15 @@ field_re='^[A-Za-z0-9_ .-]+$'   # in a variable: bash 3.2 cannot parse a space i
 [[ "$FIELD" =~ $field_re ]] || die "field name has unsupported characters"
 command -v op >/dev/null || die "op not installed"
 command -v python3 >/dev/null || die "python3 is required (builds the JSON item)"
+# Same Keychain service account as op-env (read+write on its vault): saves with no biometric prompt.
+# Used only when it can see the target vault; otherwise (e.g. --vault Private) the app integration asks as before.
+if [ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && [ "$(uname -s)" = Darwin ] && [ "${OP_ENV_SA_KEYCHAIN:-op-env-sa}" != off ]; then
+  t=$(security find-generic-password -a "$USER" -s "${OP_ENV_SA_KEYCHAIN:-op-env-sa}" -w 2>/dev/null) || t=""
+  if [ -n "$t" ] && OP_SERVICE_ACCOUNT_TOKEN="$t" op vault get "$VAULT" >/dev/null 2>&1; then
+    export OP_SERVICE_ACCOUNT_TOKEN="$t"
+  fi
+  unset t
+fi
 op vault list >/dev/null 2>&1 || die "1Password locked or CLI not integrated"
 op vault get "$VAULT" >/dev/null 2>&1 || die "vault '$VAULT' not found (create it in the 1Password app, or pass --vault)"
 

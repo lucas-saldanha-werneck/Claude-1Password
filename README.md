@@ -169,6 +169,11 @@ More cases (print mode, `/mcp` reconnect, dialog backends) in `skills/1password/
   Single-line values only; multi-line secrets (PEM keys) go in through the 1Password app.
 - **A service-account token in the session is a skeleton key.** `op-env` unsets
   `OP_SERVICE_ACCOUNT_TOKEN` before launching the command (`OP_ENV_KEEP_SA=1` to keep it).
+- **Headless mode (macOS, 0.6.0): the token lives in the Keychain.** Store a service-account token as
+  Keychain item `op-env-sa` and `op-env`/`op-store` use it: no Touch ID for that vault, even when you are
+  away from the Mac. The trade-off is plain: any same-user process can read that Keychain item and act
+  on the vault with the token's permissions (read, and write if you granted it). Keep that vault to
+  automation secrets; Private stays behind Touch ID. Setup line in CHANGELOG 0.6.0.
 - **`op://` references leak names** of vaults, items and fields. Keep those boring.
 - Claude Code's own OAuth token is stored in the OS keychain readable by same-user processes
   ([Silverfort, 2026-07](https://www.silverfort.com/blog/skipping-the-lock-a-claude-code-cli-weakness-lets-any-macos-process-read-stored-credentials)). Not something this repo can fix.

@@ -72,6 +72,22 @@ if [ "$TOTAL" -eq 0 ] && [ "$MODE" = run ]; then
   exec "$@"
 fi
 
+# Optional service account from the macOS Keychain: headless, no biometric prompt, and scoped to the
+# vaults it was granted (never Private/Personal). Store the token once, straight from op:
+#   t=$(op service-account create "Claude Code op-env" --vault Claude:read_items --raw) &&
+#   security add-generic-password -U -a "$USER" -s op-env-sa -T /usr/bin/security -w "$t"; unset t
+# OP_ENV_SA_KEYCHAIN=<name> picks another Keychain item; OP_ENV_SA_KEYCHAIN=off disables the lookup.
+SA_SOURCE=""
+if [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
+  SA_SOURCE=env
+elif [ "$(uname -s)" = Darwin ] && [ "${OP_ENV_SA_KEYCHAIN:-op-env-sa}" != off ]; then
+  if t=$(security find-generic-password -a "$USER" -s "${OP_ENV_SA_KEYCHAIN:-op-env-sa}" -w 2>/dev/null) && [ -n "$t" ]; then
+    export OP_SERVICE_ACCOUNT_TOKEN="$t"
+    SA_SOURCE="keychain ${OP_ENV_SA_KEYCHAIN:-op-env-sa}"
+  fi
+  unset t
+fi
+
 # Resolve once. Inside `op run` the variables are set; print them NUL-delimited so
 # newlines inside a value survive, and only the template's keys are ever printed.
 resolve() {
@@ -89,7 +105,11 @@ if [ "$MODE" = check ]; then
   printf 'template:  %s (%s keys)\n' "$TPL" "$TOTAL"
   # `op whoami` fails under app integration ("account is not signed in"); vault list proves the session
   if op vault list >/dev/null 2>&1; then
-    printf 'account:   %s\n' "$(op account list 2>/dev/null | awk 'NR==2{print $2" ("$1")"}')"
+    if [ -n "$SA_SOURCE" ]; then
+      printf 'account:   service account (%s) — vaults: %s\n' "$SA_SOURCE" "$(op vault list --format json 2>/dev/null | grep -o '"name": *"[^"]*"' | sed 's/.*: *"//;s/"$//' | paste -sd, -)"
+    else
+      printf 'account:   %s\n' "$(op account list 2>/dev/null | awk 'NR==2{print $2" ("$1")"}')"
+    fi
   else
     printf 'account:   NOT connected. 1Password app > Settings > Developer > "Integrate with 1Password CLI" (or set OP_SERVICE_ACCOUNT_TOKEN)\n'
     exit 1

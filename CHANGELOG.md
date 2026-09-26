@@ -5,6 +5,21 @@ Versions: [Semantic Versioning](https://semver.org/). Release notes and download
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-26
+
+### Added
+- Headless mode on macOS: a 1Password **service account** token stored in the Keychain (item `op-env-sa`)
+  is picked up by `op-env` and `op-store`. Secrets in that vault load and save with **no biometric prompt**,
+  so sessions started while you are away from the Mac (Remote Control) get their keys. Vaults the service
+  account cannot see (Private/Personal) keep using the app integration and Touch ID as before.
+  One-time setup (the token never reaches the screen):
+  `t=$(op service-account create "Claude Code op-env" --vault Claude:read_items,write_items --raw) && security add-generic-password -U -a "$USER" -s op-env-sa -T /usr/bin/security -w "$t"; unset t`
+  - `OP_ENV_SA_KEYCHAIN=<name>` picks another Keychain item; `OP_ENV_SA_KEYCHAIN=off` disables the lookup.
+  - `op-env --check` shows `account: service account (keychain op-env-sa) — vaults: ...`.
+  - `op-store` uses the token only when it can see the target vault (`op vault get`), else falls back.
+- Tip: reference items by ID (`op://<vault id>/<item id>/<field>`) — 1 read instead of 3 per reference
+  (1Password rate limits: 1,000 reads/day on individual and family accounts). Measured: a 22-key load cost ~2 reads.
+
 ## [0.5.0] - 2026-09-24
 
 ### Changed

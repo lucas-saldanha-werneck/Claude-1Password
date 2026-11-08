@@ -103,6 +103,7 @@ op-env claude --resume <id>             # any arguments pass through
 op-env ./deploy.sh                      # any command, not only claude
 op-env --check                          # diagnose
 op-env --list                           # key names only
+op-env --meta "<item>" [vault]          # last edited, version, field names (never values)
 ```
 
 `~/.claude/.env.tpl` holds references only (safe to back up, never a value):

@@ -44,6 +44,7 @@ its output is the secret.
 | `op-env <command>` | Resolves every `op://` line of `~/.claude/.env.tpl` in ONE `op` call, exports them, then `exec`s the command. TTY preserved. Use `op-env claude` to start Claude Code. |
 | `op-env --check` | Shows op version, template, account, and how many keys resolve. Run this first when anything fails. |
 | `op-env --list` | Key names only, never values. |
+| `op-env --meta "<item>" [vault]` | Title, vault, version, created/updated dates and field NAMES of one item (never values). Use it to see whether an edit in the app reached 1Password. |
 
 ## Workflows
 

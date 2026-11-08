@@ -5,6 +5,15 @@ Versions: [Semantic Versioning](https://semver.org/). Release notes and download
 
 ## [Unreleased]
 
+### Added
+- `op-env --meta "<item>" [vault]`: shows title, vault, category, version, created/updated dates and
+  field names of one item, never values. Answers "did my edit in the app reach 1Password?" without
+  `op item get`, which the guard blocks.
+
+### Fixed
+- `op-env` retries twice when it loads 0 keys (seen 2026-10-02: sessions opened in the same minute got
+  nothing while `op-env --check` passed seconds later) and logs op's error to `~/Library/Logs/op-env.log`.
+
 ## [0.6.0] - 2026-09-26
 
 ### Added

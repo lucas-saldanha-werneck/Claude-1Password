@@ -7,6 +7,7 @@
 #   op-env --tpl <file> <command>       use another template
 #   op-env --list                       print WHICH keys would be loaded (names only, no values)
 #   op-env --check                      test op + template + unlock, run nothing
+#   op-env --meta "<item>" [vault]      title, vault, version, created/updated dates only (never values)
 #   op-env --strict <command>           refuse to run if the secrets cannot be loaded (default: warn and run)
 #
 # Sets OP_ENV_LOADED=1 in the launched command, so a `claude` wrapper (install.sh --wrap-claude)
@@ -31,6 +32,7 @@ while [ $# -gt 0 ]; do
     --tpl)   TPL="$2"; shift 2 ;;
     --list)  MODE=list; shift ;;
     --check) MODE=check; shift ;;
+    --meta)  MODE=meta; META_ITEM="${2:-}"; META_VAULT="${3:-Claude}"; shift $(( $# >= 3 ? 3 : $# )) ;;
     --strict) STRICT=1; shift ;;
     -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     --) shift; break ;;
@@ -101,6 +103,23 @@ resolve() {
       printf "%s\0%s\0" "$k" "$v"
     done' _ "${KEYS[@]}" 2>/dev/null
 }
+
+if [ "$MODE" = meta ]; then
+  [ -n "${META_ITEM:-}" ] || die 'usage: op-env --meta "<item>" [vault]'
+  # The JSON never reaches the terminal: python keeps only metadata keys, never fields/values.
+  op item get "$META_ITEM" --vault "$META_VAULT" --format json 2>/dev/null | python3 -c '
+import json, sys
+try: d = json.load(sys.stdin)
+except Exception: print("op-env: item not found or not readable"); sys.exit(1)
+print("title:    ", d.get("title"))
+print("vault:    ", (d.get("vault") or {}).get("name"))
+print("category: ", d.get("category"))
+print("version:  ", d.get("version"))
+print("created:  ", d.get("created_at"))
+print("updated:  ", d.get("updated_at"))
+print("fields:   ", ", ".join(f.get("label") or f.get("id") or "?" for f in d.get("fields", [])))'
+  exit "${PIPESTATUS[1]}"
+fi
 
 if [ "$MODE" = check ]; then
   printf 'op:        %s\n' "$(op --version)"

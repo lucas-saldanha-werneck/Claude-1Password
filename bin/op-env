@@ -147,6 +147,23 @@ while IFS= read -r -d '' k && IFS= read -r -d '' v; do
   loaded=$((loaded+1))
 done < <(resolve)
 
+# 0 keys can be a passing failure (seen 2026-10-02: 2 of 4 sessions opened in the same minute got
+# nothing, `op-env --check` passed seconds later, rate limit far from used). Try twice more and keep
+# op's own error (names the reference, never a value) in a log so the cause can be found.
+tries=1
+while [ "$loaded" -eq 0 ] && [ "$TOTAL" -gt 0 ] && [ "$tries" -lt 3 ]; do
+  err=$(op run --env-file "$TPL" -- true 2>&1 >/dev/null | head -3 | tr '\n' ' ')
+  printf '%s op-env: 0 keys (try %s) pid=%s sa=%s err=%s\n' "$(date '+%F %T')" "$tries" "$$" "${SA_SOURCE:-none}" "$err" \
+    >> "$HOME/Library/Logs/op-env.log" 2>/dev/null
+  sleep 2
+  tries=$((tries+1))
+  while IFS= read -r -d '' k && IFS= read -r -d '' v; do
+    export "$k=$v"
+    loaded=$((loaded+1))
+  done < <(resolve)
+done
+[ "$tries" -gt 1 ] && printf '%s op-env: after %s tries loaded=%s\n' "$(date '+%F %T')" "$tries" "$loaded" >> "$HOME/Library/Logs/op-env.log" 2>/dev/null
+
 if [ "$loaded" -eq 0 ]; then
   [ "$STRICT" = 1 ] && die "no keys loaded. 1Password locked or CLI not integrated? Try: op-env --check"
   printf 'op-env: WARNING: no keys loaded (1Password locked or CLI not integrated?). Running WITHOUT secrets. Run op-env --check, then restart.\n' >&2

@@ -455,7 +455,7 @@ echo "smoke (tools)"
 for t in op-env op-store secret-dialog; do bash -n "$HERE/bin/$t" && { pass=$((pass+1)); echo "  ok    bash -n $t"; } || { fail=$((fail+1)); echo "  FAIL  bash -n $t"; }; done
 "$PY" -m py_compile "$HERE/bin/secret-dialog-gtk.py" "$G" && { pass=$((pass+1)); echo "  ok    py_compile"; } || { fail=$((fail+1)); echo "  FAIL  py_compile"; }
 rm -rf "$HERE/bin/__pycache__" "$HERE/hooks/__pycache__"
-"$PY" -c "import json;json.load(open('$HERE/hooks/hooks.json'));json.load(open('$HERE/.claude-plugin/plugin.json'));json.load(open('$HERE/.claude-plugin/marketplace.json'))" && { pass=$((pass+1)); echo "  ok    json"; } || { fail=$((fail+1)); echo "  FAIL  json"; }
+"$PY" -c "import json,sys;[json.load(open(a)) for a in sys.argv[1:]]" "$HERE/hooks/hooks.json" "$HERE/.claude-plugin/plugin.json" "$HERE/.claude-plugin/marketplace.json" && { pass=$((pass+1)); echo "  ok    json"; } || { fail=$((fail+1)); echo "  FAIL  json"; }
 TPL=$(mktemp); printf 'A_KEY=op://V/I/f\r\n# c\n\nB_TOKEN=op://V/I/g\n' > "$TPL"
 if [ "$(OP_ENV_TPL="$TPL" bash "$HERE/bin/op-env" --list 2>&1 | tr '\n' ' ')" = "A_KEY B_TOKEN " ]; then pass=$((pass+1)); echo "  ok    op-env --list (CRLF tolerated)"; else fail=$((fail+1)); echo "  FAIL  op-env --list: $(OP_ENV_TPL="$TPL" bash "$HERE/bin/op-env" --list 2>&1 | tr '\n' ' ')"; fi
 printf 'BAD=literal-secret\n' > "$TPL"

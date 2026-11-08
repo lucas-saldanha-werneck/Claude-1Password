@@ -88,9 +88,10 @@ VAL=$(ask "Item '$TITLE' → field '$FIELD' (vault $VAULT)\n\nPaste the secret. 
 # The python code goes in through -c, NOT a heredoc: a heredoc would replace stdin, and the piped
 # username/value would never reach python (that bug shipped in 0.3.0–0.4.1: every item saved empty).
 ITEM_PY='
-import json, subprocess, sys
+import json, sys
 mode, title, vault, field, cat, url, login = sys.argv[1:8]
-user, _, val = sys.stdin.buffer.read().decode("utf-8").partition("\0")
+user, _, rest = sys.stdin.buffer.read().decode("utf-8").partition("\0")
+val, _, current = rest.partition("\0")
 if not val:
     sys.exit(3)   # nothing arrived through the pipe: refuse to build an empty item
 f = {"id": field, "type": "CONCEALED", "label": field, "value": val}
@@ -98,10 +99,11 @@ if login == "1" or field == "password":
     f["purpose"] = "PASSWORD"   # without it, `op item edit` on a Login item ADDS a second empty "password" field
 u = {"id": "username", "type": "STRING", "purpose": "USERNAME", "label": "username", "value": user}
 if mode == "update":
-    # `op item edit` with a JSON template REPLACES the whole field list: start from the current item (fetched
-    # here, through a pipe, never printed) and change only the target field, so username & co. survive.
-    item = json.loads(subprocess.run(["op", "item", "get", title, "--vault", vault, "--format", "json"],
-                                     capture_output=True, text=True, check=True).stdout)
+    # `op item edit` with a JSON template REPLACES the whole field list: start from the current item (bash
+    # fetches it and appends it to the same pipe after a NUL, never printed) and change only the target
+    # field, so username & co. survive. Fetching it from bash, not subprocess, also works on Windows,
+    # where python cannot run an `op` that is a script.
+    item = json.loads(current)
     fields = item.setdefault("fields", [])
     def put(new):
         for x in fields:
@@ -131,7 +133,7 @@ op_failed() {  # print op's error only if it does not contain the value
 }
 if [ "$UPDATE" = 1 ]; then
   op item get "$TITLE" --vault "$VAULT" >/dev/null 2>&1 || { unset VAL; die "'$TITLE' not found in $VAULT (drop --update to create it)"; }
-  JSON=$(feed | item_json update) || { unset VAL; die "could not build the item (empty value). Nothing saved."; }
+  JSON=$({ feed; printf '\0'; op item get "$TITLE" --vault "$VAULT" --format json 2>/dev/null; } | item_json update) || { unset VAL; die "could not build the item (empty value). Nothing saved."; }
   printf '%s' "$JSON" | op item edit "$TITLE" --vault "$VAULT" >/dev/null 2>"$OPERR" || op_failed "op item edit failed"
 else
   op item get "$TITLE" --vault "$VAULT" >/dev/null 2>&1 && { unset VAL; die "'$TITLE' already exists in $VAULT. Use --update."; }

@@ -40,7 +40,6 @@ done
 
 die() { printf 'op-env: %s\n' "$*" >&2; exit 1; }
 
-command -v op >/dev/null 2>&1 || die "op not found. macOS: brew install --cask 1password-cli | https://developer.1password.com/docs/cli/get-started/"
 [ -f "$TPL" ] || die "template not found: $TPL  (see templates/env.tpl.example)"
 
 # Validate the template: every active line must be  NAME=op://...  with NAME a shell identifier.
@@ -63,6 +62,9 @@ if [ "$MODE" = list ]; then
   [ "$TOTAL" -gt 0 ] && printf '%s\n' "${KEYS[@]}"
   exit 0
 fi
+
+# --list only reads the template; everything below needs the op CLI.
+command -v op >/dev/null 2>&1 || die "op not found. macOS: brew install --cask 1password-cli | https://developer.1password.com/docs/cli/get-started/"
 
 # An empty template is allowed: nothing to load, just run the command (useful right after install).
 if [ "$TOTAL" -eq 0 ] && [ "$MODE" = run ]; then

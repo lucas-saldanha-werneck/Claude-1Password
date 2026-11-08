@@ -112,6 +112,7 @@ import json, sys
 try: d = json.load(sys.stdin)
 except Exception: print("op-env: item not found or not readable"); sys.exit(1)
 print("title:    ", d.get("title"))
+print("id:       ", d.get("id"))
 print("vault:    ", (d.get("vault") or {}).get("name"))
 print("category: ", d.get("category"))
 print("version:  ", d.get("version"))

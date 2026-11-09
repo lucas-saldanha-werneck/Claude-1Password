@@ -1,4 +1,4 @@
-# Claude-1Password
+# op-secrets
 
 1Password for [Claude Code](https://claude.com/claude-code), done so that secrets **never** enter the
 chat, the transcript, the command line or your shell history.
@@ -62,8 +62,8 @@ and the 1Password desktop app with **Settings → Developer → "Integrate with 
 token in `OP_SERVICE_ACCOUNT_TOKEN`.
 
 ```bash
-git clone https://github.com/lucas-saldanha-werneck/Claude-1Password.git
-cd Claude-1Password
+git clone https://github.com/lucas-saldanha-werneck/op-secrets.git
+cd op-secrets
 bash install.sh          # puts op-env / op-store / secret-dialog wrappers in ~/.local/bin,
                          # builds the macOS dialog (needs swiftc), creates ~/.claude/.env.tpl,
                          # self-tests the guard
@@ -74,8 +74,8 @@ Install the plugin so Claude gets the skill (the rules) **and** the hooks (the g
 or `python` on PATH:
 
 ```bash
-claude plugin marketplace add lucas-saldanha-werneck/Claude-1Password
-claude plugin install op-secrets@op-secrets
+claude plugin marketplace add lucas-saldanha-werneck/claude-plugins
+claude plugin install op-secrets@lucas-plugins
 ```
 Copying `skills/1password/` into `~/.claude/skills/` gives the rules only, no hooks.
 
@@ -90,7 +90,7 @@ via PATH (tmux wrappers, auto-retry tools). Loop-safe: `op-env` marks the child 
 and the wrapper always hands `op-env` the real binary. If 1Password is locked, `op-env` warns and
 starts Claude without secrets (`op-env --strict` refuses instead).
 
-## Usage
+## Use
 
 ```bash
 op-store Apify                          # API Credential item, field `credential`, vault Claude
@@ -186,4 +186,8 @@ More cases (print mode, `/mcp` reconnect, dialog backends) in `skills/1password/
 - The "never type secrets into Claude Code" rule and Terminal-launch flow: [kcmadden/claude-code-1password-skill](https://github.com/kcmadden/claude-code-1password-skill).
 - 1Password docs: [CLI app integration](https://developer.1password.com/docs/cli/app-integration/), [secret references](https://developer.1password.com/docs/cli/secret-references/), [service accounts](https://developer.1password.com/docs/service-accounts/).
 
-MIT. Not affiliated with 1Password or Anthropic.
+Not affiliated with 1Password or Anthropic.
+
+## License
+
+MIT. See `LICENSE`.

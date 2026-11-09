@@ -1,11 +1,11 @@
 {
   "name": "op-secrets",
-  "description": "Save a secret: a small window opens that Claude cannot see, you paste there, it lands in 1Password. Read it back: any item in your vault loads into Claude and everything it runs with one fingerprint check — Claude gets the names, never the values. Stay protected: a key you paste in the chat is deleted before Claude reads it, and printing keys or opening .env files is blocked. Mac, Windows, Linux.",
-  "version": "0.6.0",
+  "description": "Save and load secrets through 1Password without the values entering the chat.",
+  "version": "0.6.1",
   "author": {
     "name": "Lucas Saldanha"
   },
-  "repository": "https://github.com/lucas-saldanha-werneck/Claude-1Password",
+  "repository": "https://github.com/lucas-saldanha-werneck/op-secrets",
   "license": "MIT",
   "keywords": [
     "1password",

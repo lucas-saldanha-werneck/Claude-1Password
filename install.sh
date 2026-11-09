@@ -23,7 +23,7 @@ ok()   { printf '  ok    %s\n' "$*"; }
 warn() { printf '  warn  %s\n' "$*"; }
 fail() { printf '  FAIL  %s\n' "$*"; }
 
-echo "Claude-1Password install"
+echo "op-secrets install"
 chmod +x "$HERE"/bin/op-env "$HERE"/bin/op-store "$HERE"/bin/secret-dialog "$HERE"/bin/secret-dialog-gtk.py
 
 # 1. macOS: build the native dialog (needs Xcode or Command Line Tools)
@@ -84,5 +84,5 @@ else
   warn "op not installed: macOS 'brew install --cask 1password-cli' | others: https://developer.1password.com/docs/cli/get-started/"
 fi
 echo
-echo "Hooks come only with the plugin:  claude plugin marketplace add lucas-saldanha-werneck/Claude-1Password && claude plugin install op-secrets@op-secrets"
+echo "Hooks come only with the plugin:  claude plugin marketplace add lucas-saldanha-werneck/claude-plugins && claude plugin install op-secrets@lucas-plugins"
 echo "Next:  op-env --check      then      op-env claude"

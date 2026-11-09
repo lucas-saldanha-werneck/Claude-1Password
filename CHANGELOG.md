@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Versions: [Semantic Versioning](https://semver.org/). Release notes and downloadable assets: [GitHub Releases](https://github.com/lucas-saldanha-werneck/Claude-1Password/releases).
+Versions: [Semantic Versioning](https://semver.org/). Release notes and downloadable assets: [GitHub Releases](https://github.com/lucas-saldanha-werneck/op-secrets/releases).
 
 ## [Unreleased]
 
@@ -9,6 +9,12 @@ Versions: [Semantic Versioning](https://semver.org/). Release notes and download
 - `op-env --meta "<item>" [vault]`: shows title, vault, category, version, created/updated dates and
   field names of one item, never values. Answers "did my edit in the app reach 1Password?" without
   `op item get`, which the guard blocks.
+
+### Changed
+- The repository is now `lucas-saldanha-werneck/op-secrets` (was `Claude-1Password`; GitHub redirects the old URL).
+- The README installs the plugin from the catalog (`op-secrets@lucas-plugins`); the repo's own
+  marketplace still works for existing installs.
+- Short plugin description.
 
 ### Fixed
 - `op-env` retries twice when it loads 0 keys (seen 2026-10-02: sessions opened in the same minute got
@@ -153,9 +159,9 @@ Fixes from a Codex review and an adversarial review, plus the demo.
 - Claude Code skill `1password` with the rules.
 - Plugin manifest and marketplace file; `install.sh`; MIT license.
 
-[Unreleased]: https://github.com/lucas-saldanha-werneck/Claude-1Password/compare/v0.5.0...HEAD
-[0.5.0]: https://github.com/lucas-saldanha-werneck/Claude-1Password/releases/tag/v0.5.0
-[0.4.0]: https://github.com/lucas-saldanha-werneck/Claude-1Password/releases/tag/v0.4.0
-[0.3.0]: https://github.com/lucas-saldanha-werneck/Claude-1Password/releases/tag/v0.3.0
-[0.2.0]: https://github.com/lucas-saldanha-werneck/Claude-1Password/commit/35aa4be
-[0.1.0]: https://github.com/lucas-saldanha-werneck/Claude-1Password/commit/88bc2ad
+[Unreleased]: https://github.com/lucas-saldanha-werneck/op-secrets/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/lucas-saldanha-werneck/op-secrets/releases/tag/v0.5.0
+[0.4.0]: https://github.com/lucas-saldanha-werneck/op-secrets/releases/tag/v0.4.0
+[0.3.0]: https://github.com/lucas-saldanha-werneck/op-secrets/releases/tag/v0.3.0
+[0.2.0]: https://github.com/lucas-saldanha-werneck/op-secrets/commit/35aa4be
+[0.1.0]: https://github.com/lucas-saldanha-werneck/op-secrets/commit/88bc2ad

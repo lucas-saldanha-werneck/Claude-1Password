@@ -75,7 +75,7 @@ or `python` on PATH:
 
 ```bash
 claude plugin marketplace add lucas-saldanha-werneck/claude-plugins
-claude plugin install op-secrets@lucas-plugins
+claude plugin install op-secrets@lucas-tools
 ```
 Copying `skills/1password/` into `~/.claude/skills/` gives the rules only, no hooks.
 

@@ -1,7 +1,7 @@
 {
   "name": "op-secrets",
   "description": "Save and load secrets through 1Password without the values entering the chat.",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "author": {
     "name": "Lucas Saldanha"
   },

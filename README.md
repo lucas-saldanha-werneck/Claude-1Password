@@ -74,7 +74,7 @@ Install the plugin so Claude gets the skill (the rules) **and** the hooks (the g
 or `python` on PATH:
 
 ```bash
-claude plugin marketplace add lucas-saldanha-werneck/claude-plugins
+claude plugin marketplace add lucas-saldanha-werneck/lucas-tools
 claude plugin install op-secrets@lucas-tools
 ```
 Copying `skills/1password/` into `~/.claude/skills/` gives the rules only, no hooks.

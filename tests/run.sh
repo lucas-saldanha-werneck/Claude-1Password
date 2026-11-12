@@ -606,7 +606,7 @@ printf '#!/bin/sh\necho Darwin\n' > "$FAKE2/uname"
 printf '#!/bin/sh\necho fakereadonlytoken\n' > "$FAKE2/security"
 chmod +x "$FAKE2/uname" "$FAKE2/security"
 rm -f "$FAKE/item.json"
-outp=$(env -u OP_SERVICE_ACCOUNT_TOKEN OP_ENV_SA_KEYCHAIN=op-env-sa FAKE_OP_RO=1 FAKE_OP_DIR="$FAKE" PATH="$FAKE2:$FAKE:$PATH" bash "$FAKE/op-store" zz-ro 2>&1); rc=$?
+outp=$(env -u OP_SERVICE_ACCOUNT_TOKEN USER=tester OP_ENV_SA_KEYCHAIN=op-env-sa FAKE_OP_RO=1 FAKE_OP_DIR="$FAKE" PATH="$FAKE2:$FAKE:$PATH" bash "$FAKE/op-store" zz-ro 2>&1); rc=$?
 if [ $rc -eq 0 ] && [ "$(opstore_field credential)" = "fakevalue123" ] && printf '%s' "$outp" | grep -q "retrying through the 1Password app"; then pass=$((pass+1)); echo "  ok    op-store falls back to the app when the Keychain token cannot write"
 else fail=$((fail+1)); echo "  FAIL  op-store read-only token: rc=$rc out=${outp:0:160}"; fi
 rm -rf "$FAKE" "$FAKE2"

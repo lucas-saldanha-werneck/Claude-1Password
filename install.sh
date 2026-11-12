@@ -46,7 +46,8 @@ fi
 for t in op-env op-store secret-dialog; do
   [ "$(cd "$PREFIX" && pwd)" = "$HERE/bin" ] && { fail "--prefix must not be the repo's bin directory"; exit 1; }
   rm -f "$PREFIX/$t"
-  printf '#!/bin/bash\nexec "%s/bin/%s" "$@"\n' "$HERE" "$t" > "$PREFIX/$t" && chmod +x "$PREFIX/$t" && ok "$PREFIX/$t -> $HERE/bin/$t"
+  # %q: the repo path is written shell-quoted, so a folder name with $, ` or quotes stays a name, not code
+  printf '#!/bin/bash\nexec %q "$@"\n' "$HERE/bin/$t" > "$PREFIX/$t" && chmod +x "$PREFIX/$t" && ok "$PREFIX/$t -> $HERE/bin/$t"
 done
 
 # 2b. optional claude wrapper (its own directory, so it can sit before ~/.local/bin in PATH)

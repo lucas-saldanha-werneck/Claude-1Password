@@ -45,7 +45,7 @@ die() { printf 'op-env: %s\n' "$*" >&2; exit 1; }
 [ -f "$TPL" ] || die "template not found: $TPL  (see templates/env.tpl.example)"
 
 # Validate the template: every active line must be  NAME=op://...  with NAME a shell identifier.
-KEYS=()
+KEYS=(); LINES=()
 lineno=0
 while IFS= read -r line || [ -n "$line" ]; do
   lineno=$((lineno+1))
@@ -56,7 +56,7 @@ while IFS= read -r line || [ -n "$line" ]; do
   key="${key//[[:space:]]/}"
   [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "$TPL:$lineno: '$key' is not a valid variable name"
   [[ "$val" == op://* ]] || die "$TPL:$lineno: value of $key must be an op:// reference (never a literal secret)"
-  KEYS+=("$key")
+  KEYS+=("$key"); LINES+=("$key=$val")
 done < "$TPL"
 TOTAL=${#KEYS[@]}
 
@@ -72,14 +72,17 @@ command -v op >/dev/null 2>&1 || die "op not found. macOS: brew install --cask 1
 if [ "$TOTAL" -eq 0 ] && [ "$MODE" = run ]; then
   [ $# -gt 0 ] || die "missing command. e.g.: op-env claude"
   printf 'op-env: template has no active keys (%s); running without secrets\n' "$TPL" >&2
+  # same rule as below: a service-account token never travels into the launched command
+  [ "${OP_ENV_KEEP_SA:-}" = 1 ] || unset OP_SERVICE_ACCOUNT_TOKEN
   export OP_ENV_LOADED=1
   exec "$@"
 fi
 
 # Optional service account from the macOS Keychain: headless, no biometric prompt, and scoped to the
-# vaults it was granted (never Private/Personal). Store the token once, straight from op:
-#   t=$(op service-account create "Claude Code op-env" --vault Claude:read_items --raw) &&
-#   security add-generic-password -U -a "$USER" -s op-env-sa -T /usr/bin/security -w "$t"; unset t
+# vaults it was granted (never Private/Personal). Store the token once, straight from op (write_items lets
+# op-store save with it too; the token reaches `security` through stdin, never its argv):
+#   t=$(op service-account create "Claude Code op-env" --vault Claude:read_items,write_items --raw) &&
+#   printf 'add-generic-password -U -a %s -s op-env-sa -T /usr/bin/security -w %s\n' "$USER" "$t" | security -i; unset t
 # OP_ENV_SA_KEYCHAIN=<name> picks another Keychain item; OP_ENV_SA_KEYCHAIN=off disables the lookup.
 SA_SOURCE=""
 if [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
@@ -94,14 +97,17 @@ fi
 
 # Resolve once. Inside `op run` the variables are set; print them NUL-delimited so
 # newlines inside a value survive, and only the template's keys are ever printed.
+# resolve [<template> <key>...]  (default: the whole template)
 resolve() {
-  op run --no-masking --env-file "$TPL" -- bash -c '
+  local tpl="$TPL"
+  if [ $# -gt 0 ]; then tpl="$1"; shift; else set -- "${KEYS[@]}"; fi
+  op run --no-masking --env-file "$tpl" -- bash -c '
     for k in "$@"; do
       eval "v=\${$k-__OP_ENV_UNSET__}"
       [ "$v" = "__OP_ENV_UNSET__" ] && continue
       case "$v" in op://*) continue ;; esac   # unresolved reference: skip, do not export a fake value
       printf "%s\0%s\0" "$k" "$v"
-    done' _ "${KEYS[@]}" 2>/dev/null
+    done' _ "$@" 2>/dev/null
 }
 
 if [ "$MODE" = meta ]; then
@@ -161,11 +167,31 @@ fi
 
 [ $# -gt 0 ] || die "missing command. e.g.: op-env claude"
 
-loaded=0
-while IFS= read -r -d '' k && IFS= read -r -d '' v; do
-  export "$k=$v"
-  loaded=$((loaded+1))
-done < <(resolve)
+# The failure log: ~/Library/Logs on macOS, $XDG_STATE_HOME (~/.local/state) elsewhere.
+if [ "$(uname -s)" = Darwin ]; then LOG_DIR="$HOME/Library/Logs"; else LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/op-env"; fi
+LOG="${OP_ENV_LOG:-$LOG_DIR/op-env.log}"
+log() { { mkdir -p "$(dirname "$LOG")" && printf '%s op-env: %s\n' "$(date '+%F %T')" "$*" >> "$LOG"; } 2>/dev/null; }
+
+loaded=0; GOT=" "
+load() {  # stdin: NUL-delimited key/value pairs from resolve
+  while IFS= read -r -d '' k && IFS= read -r -d '' v; do
+    case "$GOT" in *" $k "*) continue ;; esac
+    export "$k=$v"
+    loaded=$((loaded+1)); GOT="$GOT$k "
+  done
+}
+load < <(resolve)
+
+# One bad reference (renamed or deleted item) makes `op run` fail for the whole template. Resolve the
+# keys one by one, so the good ones still load and the broken ones can be named.
+if [ "$loaded" -eq 0 ] && [ "$TOTAL" -gt 1 ]; then
+  ONE=$(mktemp) || die "mktemp failed"
+  for i in "${!KEYS[@]}"; do
+    printf '%s\n' "${LINES[$i]}" > "$ONE"
+    load < <(resolve "$ONE" "${KEYS[$i]}")
+  done
+  rm -f "$ONE"
+fi
 
 # 0 keys can be a passing failure (seen 2026-10-02: 2 of 4 sessions opened in the same minute got
 # nothing, `op-env --check` passed seconds later, rate limit far from used). Try twice more and keep
@@ -173,22 +199,21 @@ done < <(resolve)
 tries=1
 while [ "$loaded" -eq 0 ] && [ "$TOTAL" -gt 0 ] && [ "$tries" -lt 3 ]; do
   err=$(op run --env-file "$TPL" -- true 2>&1 >/dev/null | head -3 | tr '\n' ' ')
-  printf '%s op-env: 0 keys (try %s) pid=%s sa=%s err=%s\n' "$(date '+%F %T')" "$tries" "$$" "${SA_SOURCE:-none}" "$err" \
-    >> "$HOME/Library/Logs/op-env.log" 2>/dev/null
+  log "0 keys (try $tries) pid=$$ sa=${SA_SOURCE:-none} err=$err"
   sleep 2
   tries=$((tries+1))
-  while IFS= read -r -d '' k && IFS= read -r -d '' v; do
-    export "$k=$v"
-    loaded=$((loaded+1))
-  done < <(resolve)
+  load < <(resolve)
 done
-[ "$tries" -gt 1 ] && printf '%s op-env: after %s tries loaded=%s\n' "$(date '+%F %T')" "$tries" "$loaded" >> "$HOME/Library/Logs/op-env.log" 2>/dev/null
+[ "$tries" -gt 1 ] && log "after $tries tries loaded=$loaded"
 
+MISSING=""
+for k in "${KEYS[@]}"; do case "$GOT" in *" $k "*) ;; *) MISSING="$MISSING $k" ;; esac; done
 if [ "$loaded" -eq 0 ]; then
   [ "$STRICT" = 1 ] && die "no keys loaded. 1Password locked or CLI not integrated? Try: op-env --check"
   printf 'op-env: WARNING: no keys loaded (1Password locked or CLI not integrated?). Running WITHOUT secrets. Run op-env --check, then restart.\n' >&2
 elif [ "$loaded" -lt "$TOTAL" ]; then
-  printf 'op-env: warning: %s of %s keys loaded (a reference did not resolve; run op-env --check)\n' "$loaded" "$TOTAL" >&2
+  [ "$STRICT" = 1 ] && die "only $loaded of $TOTAL keys loaded; not resolved:$MISSING (run op-env --check)"
+  printf 'op-env: warning: %s of %s keys loaded; not resolved:%s (run op-env --check)\n' "$loaded" "$TOTAL" "$MISSING" >&2
 fi
 
 # A service-account token must not travel into the launched command: it would give every `op` call

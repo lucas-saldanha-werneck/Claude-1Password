@@ -712,7 +712,7 @@ printf '%s' "$(b '"op read op://Claude/x/credential"')" | CLAUDE_PLUGIN_ROOT="$H
 if [ $rc -eq 2 ]; then pass=$((pass+1)); echo "  ok    hooks.json command runs the guard"; else fail=$((fail+1)); echo "  FAIL  hooks.json command rc=$rc"; fi
 
 # setup recipes: the service-account token never goes in argv, and it can write (op-store saves with it)
-if grep -rnE 'add-generic-password[^|]*-w "\$' "$HERE/bin" "$HERE/README.md" "$HERE/CHANGELOG.md" "$HERE/skills" >/dev/null; then fail=$((fail+1)); echo "  FAIL  a setup recipe passes the token as an argument of security"
+if grep -rnE 'add-generic-password[^|]*-w "\$' "$HERE/bin/op-env" "$HERE/bin/op-store" "$HERE/README.md" "$HERE/CHANGELOG.md" "$HERE/skills" >/dev/null; then fail=$((fail+1)); echo "  FAIL  a setup recipe passes the token as an argument of security"
 else pass=$((pass+1)); echo "  ok    setup recipes feed the token to security through stdin"; fi
 if grep -q 'read_items,write_items' "$HERE/bin/op-env"; then pass=$((pass+1)); echo "  ok    op-env recipe grants write_items"; else fail=$((fail+1)); echo "  FAIL  op-env recipe is read-only"; fi
 

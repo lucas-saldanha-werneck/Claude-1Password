@@ -6,11 +6,13 @@
 set +xv
 REAL="${CLAUDE_REAL_BIN:-$HOME/.local/bin/claude}"
 if [ ! -x "$REAL" ]; then
-  # find a claude that is not this wrapper
-  me="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
-  for c in $(command -v -a claude 2>/dev/null); do
-    [ "$c" != "$me" ] && [ -x "$c" ] && { REAL="$c"; break; }
-  done
+  # find a claude on PATH that is not this wrapper (`type -ap`: bash has no `command -v -a`;
+  # -ef compares the files themselves, so /tmp vs /private/tmp or a symlink to us still counts as us)
+  REAL=""
+  while IFS= read -r c; do
+    [ -n "$c" ] && [ -x "$c" ] && ! [ "$c" -ef "$0" ] && { REAL="$c"; break; }
+  done < <(type -ap claude 2>/dev/null)
+  [ -n "$REAL" ] || REAL="${CLAUDE_REAL_BIN:-$HOME/.local/bin/claude}"
 fi
 [ -x "$REAL" ] || { printf 'claude-wrapper: real claude binary not found (set CLAUDE_REAL_BIN)\n' >&2; exit 127; }
 if [ "${OP_ENV_LOADED:-}" = 1 ] || ! command -v op-env >/dev/null 2>&1; then

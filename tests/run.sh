@@ -462,6 +462,73 @@ xb allow <<'X'
 declare -p PATH
 X
 
+echo "0.6.5: recursive searches, Keychain reads, single variables"
+xb block <<'X'
+grep -rn API_KEY .
+X
+xb block <<'X'
+grep -R -n "OPENAI_API_KEY" ~/project
+X
+xb block <<'X'
+rg -n --hidden GITHUB_TOKEN
+X
+xb allow <<'X'
+grep -rln API_KEY .
+X
+xb allow <<'X'
+grep -rn API_KEY . --exclude='.env*'
+X
+xb allow <<'X'
+grep -rn API_KEY src/ --include='*.py'
+X
+xb allow <<'X'
+rg -n API_KEY
+X
+xb allow <<'X'
+grep -rn "def main" .
+X
+xb allow <<'X'
+grep -n API_KEY src/app.py
+X
+expect block read "$(j '{"tool_name":"Grep","tool_input":{"pattern":"API_KEY","path":".","glob":".env*","output_mode":"content"}}')"
+expect block read "$(j '{"tool_name":"Grep","tool_input":{"pattern":"API_KEY","path":"/x/project","output_mode":"content"}}')"
+expect allow read "$(j '{"tool_name":"Grep","tool_input":{"pattern":"API_KEY","path":"/x/project"}}')"
+expect allow read "$(j '{"tool_name":"Grep","tool_input":{"pattern":"API_KEY","path":"/x/project","glob":"*.py","output_mode":"content"}}')"
+expect allow read "$(j '{"tool_name":"Grep","tool_input":{"pattern":"def main","path":"/x/project","output_mode":"content"}}')"
+xb block <<'X'
+security find-generic-password -a me -s op-env-sa -w
+X
+xb block <<'X'
+security find-generic-password -s op-env-sa -w | head -c 8
+X
+xb allow <<'X'
+t=$(security find-generic-password -a me -s op-env-sa -w)
+X
+xb allow <<'X'
+security find-generic-password -a me -s op-env-sa
+X
+xb allow <<'X'
+security find-generic-password -s op-env-sa -w | wc -c
+X
+xb block <<'X'
+python3 -c "import os; print(os.environ['OPENAI_API_KEY'])"
+X
+xb block <<'X'
+node -e "console.log(process.env.GITHUB_TOKEN)"
+X
+xb allow <<'X'
+python3 -c "import os; print(os.environ['HOME'])"
+X
+xb block <<'X'
+curl -v -H "Authorization: Bearer $APIFY_TOKEN" https://api.example.com
+X
+xb block <<'X'
+op-env curl -sv https://api.example.com
+X
+xb allow <<'X'
+curl -v https://example.com
+X
+
 echo "bash known gaps (v0.5)"
 known_gap bash "$(printf '%s' 'X=$(cat .env); echo "$X"' | tojson bash)"
 
@@ -470,6 +537,10 @@ outp=$(printf '%s' "$(b '"export GITHUB_TOKEN=ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcd
 if printf '%s' "$outp" | grep -q "ghp_ABCDEFGHIJ"; then fail=$((fail+1)); echo "  FAIL  block message leaked the value"; else pass=$((pass+1)); echo "  ok    bash block message has no value"; fi
 outp=$(printf '%s' "$(j '{"prompt":"key sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"}')" | "$PY" "$G" prompt 2>&1)
 if printf '%s' "$outp" | grep -q "AbCdEfGh"; then fail=$((fail+1)); echo "  FAIL  prompt block message leaked the value"; else pass=$((pass+1)); echo "  ok    prompt block message has no value"; fi
+kv="tok""en=abcd""1234efgh5678wxyz"
+outp=$(printf '{"prompt":"%s"}' "$kv" | "$PY" "$G" prompt 2>&1)
+if printf '%s' "$outp" | grep -q '"decision": *"block"' && ! printf '%s' "$outp" | grep -q "abc"; then pass=$((pass+1)); echo "  ok    keyword=value block message names the keyword only"
+else fail=$((fail+1)); echo "  FAIL  keyword=value block message: ${outp:0:160}"; fi
 
 echo "smoke (tools)"
 for t in op-env op-store secret-dialog; do bash -n "$HERE/bin/$t" && { pass=$((pass+1)); echo "  ok    bash -n $t"; } || { fail=$((fail+1)); echo "  FAIL  bash -n $t"; }; done
@@ -497,7 +568,11 @@ cat > "$FAKE/op" <<'SH'
 #!/bin/bash
 case "$1 $2" in
   "vault list"|"vault get") exit 0 ;;
-  "item create"|"item edit") cat > "$FAKE_OP_DIR/item.json"; exit 0 ;;
+  "item create"|"item edit")
+    # FAKE_OP_RO: a read-only service-account token cannot write
+    [ -n "${FAKE_OP_RO:-}" ] && [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && { echo "[ERROR] forbidden: write_items not granted" >&2; exit 1; }
+    ls "${TMPDIR:-/tmp}" 2>/dev/null | grep -c '^op-store\..*\.lock$' > "$FAKE_OP_DIR/locks"
+    cat > "$FAKE_OP_DIR/item.json"; exit 0 ;;
   "item get") [ -f "$FAKE_OP_DIR/item.json" ] || exit 1; case " $* " in *" --format json "*) cat "$FAKE_OP_DIR/item.json" ;; esac; exit 0 ;;
   "item delete") rm -f "$FAKE_OP_DIR/item.json"; exit 0 ;;
 esac
@@ -507,13 +582,139 @@ chmod +x "$FAKE/op-store" "$FAKE/secret-dialog" "$FAKE/op"
 opstore_field() {  # $1 field id → prints its value from the JSON the fake `op` received
   "$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); print(next((f.get("value","") for f in d.get("fields",[]) if f.get("id")==sys.argv[2]), "<missing>"))' "$FAKE/item.json" "$1"
 }
+export OP_ENV_SA_KEYCHAIN=off   # never touch the real Keychain from the tests
 outp=$(FAKE_OP_DIR="$FAKE" PATH="$FAKE:$PATH" bash "$FAKE/op-store" --login zz-test --url https://example.com 2>&1); rc=$?
 if [ $rc -eq 0 ] && [ "$(opstore_field password)" = "fakevalue123" ] && [ "$(opstore_field username)" = "fakeuser" ]; then pass=$((pass+1)); echo "  ok    op-store --login sends the dialog values to op"
 else fail=$((fail+1)); echo "  FAIL  op-store --login: rc=$rc password=$(opstore_field password) username=$(opstore_field username) out=${outp:0:100}"; fi
 outp=$(FAKE_OP_DIR="$FAKE" PATH="$FAKE:$PATH" bash "$FAKE/op-store" --update --field password zz-test 2>&1); rc=$?
 if [ $rc -eq 0 ] && [ "$(opstore_field password)" = "fakevalue123" ] && [ "$(opstore_field username)" = "fakeuser" ]; then pass=$((pass+1)); echo "  ok    op-store --update sends the dialog value to op and keeps the other fields"
 else fail=$((fail+1)); echo "  FAIL  op-store --update: rc=$rc password=$(opstore_field password) username=$(opstore_field username) out=${outp:0:100}"; fi
-rm -rf "$FAKE"
+# the write runs under a per-item lock, and the lock is gone afterwards
+mkdir -p "$FAKE/tmp"
+outp=$(TMPDIR="$FAKE/tmp" FAKE_OP_DIR="$FAKE" PATH="$FAKE:$PATH" bash "$FAKE/op-store" --update --field password zz-test 2>&1); rc=$?
+if [ $rc -eq 0 ] && [ "$(cat "$FAKE/locks")" = 1 ] && [ -z "$(ls "$FAKE/tmp")" ]; then pass=$((pass+1)); echo "  ok    op-store holds a per-item lock while it writes"
+else fail=$((fail+1)); echo "  FAIL  op-store lock: rc=$rc locks=$(cat "$FAKE/locks" 2>/dev/null) left=$(ls "$FAKE/tmp") out=${outp:0:100}"; fi
+# a leftover lock (older than 10 min) does not block forever
+stale="$FAKE/tmp/op-store.$(printf '%s/%s' Claude zz-test | cksum | cut -d' ' -f1).lock"
+mkdir "$stale" && touch -t 202001010000 "$stale"
+outp=$(TMPDIR="$FAKE/tmp" FAKE_OP_DIR="$FAKE" PATH="$FAKE:$PATH" bash "$FAKE/op-store" --update --field password zz-test 2>&1); rc=$?
+if [ $rc -eq 0 ] && [ ! -d "$stale" ]; then pass=$((pass+1)); echo "  ok    op-store takes over a stale lock"
+else fail=$((fail+1)); echo "  FAIL  op-store stale lock: rc=$rc out=${outp:0:100}"; fi
+# a read-only Keychain service-account token: op-store retries through the app instead of failing
+FAKE2=$(mktemp -d)
+printf '#!/bin/sh\necho Darwin\n' > "$FAKE2/uname"
+printf '#!/bin/sh\necho fakereadonlytoken\n' > "$FAKE2/security"
+chmod +x "$FAKE2/uname" "$FAKE2/security"
+rm -f "$FAKE/item.json"
+outp=$(env -u OP_SERVICE_ACCOUNT_TOKEN OP_ENV_SA_KEYCHAIN=op-env-sa FAKE_OP_RO=1 FAKE_OP_DIR="$FAKE" PATH="$FAKE2:$FAKE:$PATH" bash "$FAKE/op-store" zz-ro 2>&1); rc=$?
+if [ $rc -eq 0 ] && [ "$(opstore_field credential)" = "fakevalue123" ] && printf '%s' "$outp" | grep -q "retrying through the 1Password app"; then pass=$((pass+1)); echo "  ok    op-store falls back to the app when the Keychain token cannot write"
+else fail=$((fail+1)); echo "  FAIL  op-store read-only token: rc=$rc out=${outp:0:160}"; fi
+rm -rf "$FAKE" "$FAKE2"
+
+# op-env run mode with a fake `op`: references resolve from a store file; a missing one fails the whole
+# `op run`, like the real CLI does.
+OPE=$(mktemp -d)
+cat > "$OPE/op" <<'SH'
+#!/bin/bash
+case "$1" in
+  --version) echo 0.0.0-fake; exit 0 ;;
+  vault|account) exit 0 ;;
+  run)
+    shift; tpl=""
+    while [ $# -gt 0 ]; do case "$1" in --env-file) tpl="$2"; shift 2 ;; --) shift; break ;; *) shift ;; esac; done
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in ''|\#*) continue ;; esac
+      k="${line%%=*}"; ref="${line#*=}"
+      val=$(awk -v r="$ref" '$1==r {print $2}' "$FAKE_OP_DIR/store")
+      [ -n "$val" ] || { echo "[ERROR] could not resolve $ref" >&2; exit 1; }
+      export "$k=$val"
+    done < "$tpl"
+    exec "$@" ;;
+esac
+exit 1
+SH
+chmod +x "$OPE/op"
+printf 'op://V/a/f fakea\nop://V/b/f fakeb\nop://V/c/f op://left-unresolved\n' > "$OPE/store"
+printf 'A_KEY=op://V/a/f\nB_KEY=op://V/b/f\n' > "$OPE/both.tpl"
+printf 'A_KEY=op://V/a/f\nB_KEY=op://V/gone/f\n' > "$OPE/broken.tpl"
+printf '# nothing yet\n' > "$OPE/empty.tpl"
+printf 'A_KEY=op://V/a/f\nC_KEY=op://V/c/f\n' > "$OPE/partial.tpl"   # op run succeeds, C stays unresolved
+ope() { FAKE_OP_DIR="$OPE" PATH="$OPE:$PATH" bash "$HERE/bin/op-env" "$@"; }
+# shellcheck disable=SC2016
+show='printf "%s|%s|%s" "${A_KEY:-none}" "${B_KEY:-none}" "${OP_SERVICE_ACCOUNT_TOKEN:+sa}"'
+outp=$(ope --tpl "$OPE/both.tpl" sh -c "$show" 2>/dev/null)
+if [ "$outp" = "fakea|fakeb|" ]; then pass=$((pass+1)); echo "  ok    op-env run exports the template keys"; else fail=$((fail+1)); echo "  FAIL  op-env run: $outp"; fi
+outp=$(ope --tpl "$OPE/broken.tpl" sh -c "$show" 2>"$ERR"); errp=$(cat "$ERR")
+if [ "$outp" = "fakea|none|" ] && printf '%s' "$errp" | grep -q "B_KEY"; then pass=$((pass+1)); echo "  ok    op-env: one broken reference does not drop the others, and is named"
+else fail=$((fail+1)); echo "  FAIL  op-env broken reference: out=$outp err=${errp:0:160}"; fi
+outp=$(ope --strict --tpl "$OPE/partial.tpl" sh -c 'echo ran' 2>/dev/null); rc=$?
+if [ $rc -ne 0 ] && [ -z "$outp" ]; then pass=$((pass+1)); echo "  ok    op-env --strict refuses a partial load"; else fail=$((fail+1)); echo "  FAIL  op-env --strict partial: rc=$rc out=$outp"; fi
+outp=$(OP_SERVICE_ACCOUNT_TOKEN=fakesatoken ope --tpl "$OPE/empty.tpl" sh -c "$show" 2>/dev/null)
+if [ "$outp" = "none|none|" ]; then pass=$((pass+1)); echo "  ok    op-env with an empty template does not pass the service-account token on"
+else fail=$((fail+1)); echo "  FAIL  op-env empty template passed the token: $outp"; fi
+outp=$(OP_SERVICE_ACCOUNT_TOKEN=fakesatoken ope --tpl "$OPE/both.tpl" sh -c "$show" 2>/dev/null)
+if [ "$outp" = "fakea|fakeb|" ]; then pass=$((pass+1)); echo "  ok    op-env does not pass the service-account token on"; else fail=$((fail+1)); echo "  FAIL  op-env passed the token: $outp"; fi
+# outside macOS the failure log goes to $XDG_STATE_HOME / ~/.local/state, and the folder is created
+mkdir -p "$OPE/linux" "$OPE/home"
+printf '#!/bin/sh\necho Linux\n' > "$OPE/linux/uname"; chmod +x "$OPE/linux/uname"
+printf 'A_KEY=op://V/gone/f\n' > "$OPE/one-broken.tpl"
+outp=$(env -u XDG_STATE_HOME HOME="$OPE/home" FAKE_OP_DIR="$OPE" PATH="$OPE/linux:$OPE:$PATH" bash "$HERE/bin/op-env" --tpl "$OPE/one-broken.tpl" true 2>&1)
+if [ -s "$OPE/home/.local/state/op-env/op-env.log" ] && ! printf '%s' "$outp" | grep -qi "no such file"; then pass=$((pass+1)); echo "  ok    op-env failure log outside macOS"
+else fail=$((fail+1)); echo "  FAIL  op-env log: out=${outp:0:160}"; fi
+rm -rf "$OPE"
+
+# claude-wrapper: finds the real claude on PATH when ~/.local/bin/claude does not exist (bash has no `command -v -a`)
+CW=$(mktemp -d); mkdir -p "$CW/wrap" "$CW/real" "$CW/home"
+cp "$HERE/bin/claude-wrapper" "$CW/wrap/claude"
+printf '#!/bin/sh\necho "real-claude $*"\n' > "$CW/real/claude"
+printf '#!/bin/sh\necho "via-op-env $*"\n' > "$CW/op-env"
+chmod +x "$CW/wrap/claude" "$CW/real/claude" "$CW/op-env"
+outp=$(env -u CLAUDE_REAL_BIN OP_ENV_LOADED=1 HOME="$CW/home" PATH="$CW/wrap:$CW/real:$PATH" claude --version 2>&1); rc=$?
+if [ $rc -eq 0 ] && [ "$outp" = "real-claude --version" ]; then pass=$((pass+1)); echo "  ok    claude-wrapper finds the real claude on PATH"
+else fail=$((fail+1)); echo "  FAIL  claude-wrapper: rc=$rc out=${outp:0:120}"; fi
+outp=$(env -u CLAUDE_REAL_BIN -u OP_ENV_LOADED HOME="$CW/home" PATH="$CW/wrap:$CW:$CW/real:$PATH" claude --version 2>&1)
+case "$outp" in "via-op-env "*"/real/claude --version") pass=$((pass+1)); echo "  ok    claude-wrapper starts the real claude through op-env" ;;
+  *) fail=$((fail+1)); echo "  FAIL  claude-wrapper via op-env: ${outp:0:120}" ;; esac
+rm -rf "$CW"
+
+# install.sh writes the repo path shell-quoted: a folder name with $(...) stays a name
+INS=$(mktemp -d); D="$INS/repo \$(touch pwned)"
+mkdir -p "$D" "$INS/home" "$INS/pfx"
+cp -R "$HERE/bin" "$HERE/hooks" "$HERE/templates" "$HERE/install.sh" "$D/"
+(cd "$INS" && HOME="$INS/home" bash "$D/install.sh" --prefix "$INS/pfx" >/dev/null 2>&1)
+printf 'A_KEY=op://V/I/f\n' > "$INS/t.tpl"
+outp=$(cd "$INS" && OP_ENV_TPL="$INS/t.tpl" "$INS/pfx/op-env" --list 2>&1)
+if [ "$outp" = "A_KEY" ] && [ ! -e "$INS/pwned" ]; then pass=$((pass+1)); echo "  ok    install.sh wrappers quote the repo path"
+else fail=$((fail+1)); echo "  FAIL  install.sh quoting: out=${outp:0:120} pwned=$([ -e "$INS/pwned" ] && echo yes || echo no)"; fi
+rm -rf "$INS"
+
+# hooks.json: a `python` that is Python 2 is refused with a warning instead of failing silently
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) echo "  skip  hooks.json Python 2 check (no POSIX sh symlink on Windows)" ;; *)
+  HP=$(mktemp -d)
+  ln -s "$(command -v sh)" "$HP/sh"
+  : > "$HP/calls"
+  cat > "$HP/python" <<SH
+#!/bin/sh
+echo "\$*" >> "$HP/calls"
+case "\$*" in *version_info*) exit 1 ;; esac   # pretend to be Python 2
+exit 0
+SH
+  chmod +x "$HP/python"
+  hcmd=$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1]))["hooks"]["PreToolUse"][0]["hooks"][0]["command"])' "$HERE/hooks/hooks.json")
+  errp=$(printf '{}' | CLAUDE_PLUGIN_ROOT="$HERE" PATH="$HP" "$(command -v sh)" -c "$hcmd" 2>&1 >/dev/null); rc=$?
+  if [ $rc -eq 1 ] && printf '%s' "$errp" | grep -q "needs Python 3" && grep -q version_info "$HP/calls" && ! grep -q guard.py "$HP/calls"; then pass=$((pass+1)); echo "  ok    hooks.json refuses Python 2 with a warning"
+  else fail=$((fail+1)); echo "  FAIL  hooks.json Python 2: rc=$rc err=${errp:0:120}"; fi
+  rm -rf "$HP" ;;
+esac
+# and with the real Python 3 the hook command still runs the guard
+hcmd=$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1]))["hooks"]["PreToolUse"][0]["hooks"][0]["command"])' "$HERE/hooks/hooks.json")
+printf '%s' "$(b '"op read op://Claude/x/credential"')" | CLAUDE_PLUGIN_ROOT="$HERE" sh -c "$hcmd" >/dev/null 2>&1; rc=$?
+if [ $rc -eq 2 ]; then pass=$((pass+1)); echo "  ok    hooks.json command runs the guard"; else fail=$((fail+1)); echo "  FAIL  hooks.json command rc=$rc"; fi
+
+# setup recipes: the service-account token never goes in argv, and it can write (op-store saves with it)
+if grep -rnE 'add-generic-password[^|]*-w "\$' "$HERE/bin" "$HERE/README.md" "$HERE/CHANGELOG.md" "$HERE/skills" >/dev/null; then fail=$((fail+1)); echo "  FAIL  a setup recipe passes the token as an argument of security"
+else pass=$((pass+1)); echo "  ok    setup recipes feed the token to security through stdin"; fi
+if grep -q 'read_items,write_items' "$HERE/bin/op-env"; then pass=$((pass+1)); echo "  ok    op-env recipe grants write_items"; else fail=$((fail+1)); echo "  FAIL  op-env recipe is read-only"; fi
 
 echo
 echo "passed: $pass  failed: $fail  known gaps: $known"

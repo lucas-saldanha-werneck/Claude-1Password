@@ -40,10 +40,13 @@ command -v op >/dev/null || die "op not installed"
 command -v python3 >/dev/null || die "python3 is required (builds the JSON item)"
 # Same Keychain service account as op-env (read+write on its vault): saves with no biometric prompt.
 # Used only when it can see the target vault; otherwise (e.g. --vault Private) the app integration asks as before.
+# A token that can only read (read_items) passes that test; its write then fails and op-store retries once
+# without it, through the app integration.
+SA_KEYCHAIN=0
 if [ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && [ "$(uname -s)" = Darwin ] && [ "${OP_ENV_SA_KEYCHAIN:-op-env-sa}" != off ]; then
   t=$(security find-generic-password -a "$USER" -s "${OP_ENV_SA_KEYCHAIN:-op-env-sa}" -w 2>/dev/null) || t=""
   if [ -n "$t" ] && OP_SERVICE_ACCOUNT_TOKEN="$t" op vault get "$VAULT" >/dev/null 2>&1; then
-    export OP_SERVICE_ACCOUNT_TOKEN="$t"
+    export OP_SERVICE_ACCOUNT_TOKEN="$t"; SA_KEYCHAIN=1
   fi
   unset t
 fi
@@ -131,14 +134,37 @@ op_failed() {  # print op's error only if it does not contain the value
   case "$msg" in *"$VAL"*) msg="(error text withheld: it contained the value)" ;; esac
   unset VAL; die "$1: $msg"
 }
-if [ "$UPDATE" = 1 ]; then
-  op item get "$TITLE" --vault "$VAULT" >/dev/null 2>&1 || { unset VAL; die "'$TITLE' not found in $VAULT (drop --update to create it)"; }
-  JSON=$({ feed; printf '\0'; op item get "$TITLE" --vault "$VAULT" --format json 2>/dev/null; } | item_json update) || { unset VAL; die "could not build the item (empty value). Nothing saved."; }
-  printf '%s' "$JSON" | op item edit "$TITLE" --vault "$VAULT" >/dev/null 2>"$OPERR" || op_failed "op item edit failed"
-else
-  op item get "$TITLE" --vault "$VAULT" >/dev/null 2>&1 && { unset VAL; die "'$TITLE' already exists in $VAULT. Use --update."; }
-  JSON=$(feed | item_json create) || { unset VAL; die "could not build the item (empty value). Nothing saved."; }
-  printf '%s' "$JSON" | op item create --vault "$VAULT" >/dev/null 2>"$OPERR" || op_failed "op item create failed"
+# One op-store at a time per item: --update rewrites the whole item from a fresh copy, so two updates of the
+# same item running together could undo each other. (`op item edit field=value` would avoid that, but it
+# puts the value in argv.) mkdir is atomic; a lock older than 10 minutes is a leftover and is taken over.
+LOCK="${TMPDIR:-/tmp}/op-store.$(printf '%s/%s' "$VAULT" "$TITLE" | cksum | cut -d' ' -f1).lock"
+waited=0
+until mkdir "$LOCK" 2>/dev/null; do
+  if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then rmdir "$LOCK" 2>/dev/null; continue; fi
+  waited=$((waited+1)); [ "$waited" -gt 60 ] && { unset VAL; die "another op-store is saving '$TITLE' (lock $LOCK). Nothing saved."; }
+  sleep 1
+done
+trap 'rm -f "$OPERR"; rmdir "$LOCK" 2>/dev/null' EXIT
+
+write_item() {  # returns 0 on success; op's stderr in $OPERR
+  if [ "$UPDATE" = 1 ]; then
+    op item get "$TITLE" --vault "$VAULT" >/dev/null 2>&1 || { unset VAL; die "'$TITLE' not found in $VAULT (drop --update to create it)"; }
+    JSON=$({ feed; printf '\0'; op item get "$TITLE" --vault "$VAULT" --format json 2>/dev/null; } | item_json update) || { unset VAL; die "could not build the item (empty value). Nothing saved."; }
+    printf '%s' "$JSON" | op item edit "$TITLE" --vault "$VAULT" >/dev/null 2>"$OPERR"
+  else
+    op item get "$TITLE" --vault "$VAULT" >/dev/null 2>&1 && { unset VAL; die "'$TITLE' already exists in $VAULT. Use --update."; }
+    JSON=$(feed | item_json create) || { unset VAL; die "could not build the item (empty value). Nothing saved."; }
+    printf '%s' "$JSON" | op item create --vault "$VAULT" >/dev/null 2>"$OPERR"
+  fi
+}
+if ! write_item; then
+  if [ "$SA_KEYCHAIN" = 1 ]; then
+    printf 'op-store: the Keychain service account could not save (read-only token?); retrying through the 1Password app\n' >&2
+    unset OP_SERVICE_ACCOUNT_TOKEN; SA_KEYCHAIN=0
+    write_item || op_failed "op item $([ "$UPDATE" = 1 ] && echo edit || echo create) failed"
+  else
+    op_failed "op item $([ "$UPDATE" = 1 ] && echo edit || echo create) failed"
+  fi
 fi
 unset VAL USERNAME JSON
 

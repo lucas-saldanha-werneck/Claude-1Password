@@ -23,6 +23,34 @@ Versions: [Semantic Versioning](https://semver.org/). Release notes and download
 - `op-env` retries twice when it loads 0 keys (seen 2026-10-02: sessions opened in the same minute got
   nothing while `op-env --check` passed seconds later) and logs op's error to `~/Library/Logs/op-env.log`.
 
+## [0.6.5] - 2026-11-12
+
+### Fixed
+- `claude-wrapper` found no real `claude` when `~/.local/bin/claude` did not exist (it used `command -v -a`,
+  which bash does not have) and exited 127. It now uses `type -ap` and skips itself with `-ef`.
+- `op-env`: one broken reference no longer drops every key. When the whole template fails, keys are resolved one
+  by one; the warning names the keys that did not resolve.
+- `op-env --strict` now also refuses a partial load (some keys missing), not only an empty one.
+- `op-env` with an empty template no longer passes `OP_SERVICE_ACCOUNT_TOKEN` to the command.
+- `op-env` failure log: `~/Library/Logs` on macOS, `$XDG_STATE_HOME/op-env` (`~/.local/state/op-env`) elsewhere;
+  the folder is created and a failed write prints nothing.
+- `op-store`: a read-only Keychain service-account token (passes the `op vault get` test, fails to write) no longer
+  makes every save fail: op-store retries once through the 1Password app. Saves of the same item take a lock,
+  so two `--update` runs cannot undo each other.
+- Setup recipe: the service-account token reaches `security` through stdin (`security -i`), never its argv, and
+  the token is created with `read_items,write_items` everywhere (the `op-env` comment said `read_items`).
+- `install.sh` writes the repo path shell-quoted (`%q`) into the PATH wrappers.
+- Hooks: a `python` that is Python 2 is refused with a warning (exit 1, shown to the user) instead of failing silently.
+- Guard:
+  - blocks a recursive content search for a key name that would meet `.env` files (`grep -rn API_KEY .`,
+    `rg --hidden ...`, Grep with `output_mode: content` over a folder or with a glob like `.env*`); listing files
+    (`-l`, files_with_matches), `--include='*.py'` and `--exclude='.env*'` still pass;
+  - blocks `security find-generic-password|find-internet-password -w/-g` printed to the screen (capturing it in a
+    variable or piping it into a non-printing command still passes);
+  - blocks printing one secret variable from a script (`print(os.environ['X_TOKEN'])`, `console.log(process.env.X_KEY)`)
+    and `curl -v/--trace` or `wget --debug` with a secret variable or under `op-env`;
+  - block messages name the keyword only, never the first characters of the value.
+
 ## [0.6.0] - 2026-09-26
 
 ### Added
@@ -31,7 +59,8 @@ Versions: [Semantic Versioning](https://semver.org/). Release notes and download
   so sessions started while you are away from the Mac (Remote Control) get their keys. Vaults the service
   account cannot see (Private/Personal) keep using the app integration and Touch ID as before.
   One-time setup (the token never reaches the screen):
-  `t=$(op service-account create "Claude Code op-env" --vault Claude:read_items,write_items --raw) && security add-generic-password -U -a "$USER" -s op-env-sa -T /usr/bin/security -w "$t"; unset t`
+  `t=$(op service-account create "Claude Code op-env" --vault Claude:read_items,write_items --raw) && printf 'add-generic-password -U -a %s -s op-env-sa -T /usr/bin/security -w %s\n' "$USER" "$t" | security -i; unset t`
+  (updated in 0.6.5: the token reaches `security` through stdin, not its argv)
   - `OP_ENV_SA_KEYCHAIN=<name>` picks another Keychain item; `OP_ENV_SA_KEYCHAIN=off` disables the lookup.
   - `op-env --check` shows `account: service account (keychain op-env-sa) — vaults: ...`.
   - `op-store` uses the token only when it can see the target vault (`op vault get`), else falls back.

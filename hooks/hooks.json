@@ -1,10 +1,10 @@
 {
-  "description": "Steer secrets through 1Password: block secrets pasted in chat (erased before Claude sees them), block commands/reads/writes that would leak or hard-code a secret, and stop Claude from asking the user to paste a secret. python3 or python must be on PATH; otherwise the hooks fail open.",
+  "description": "Steer secrets through 1Password: block secrets pasted in chat (erased before Claude sees them), block commands/reads/writes that would leak or hard-code a secret, and stop Claude from asking the user to paste a secret. Python 3 (python3, or python if it is Python 3) must be on PATH; otherwise the hooks warn and fail open.",
   "hooks": {
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" prompt'", "timeout": 10 }
+          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && \"$p\" -c \"import sys; sys.exit(sys.version_info[0] < 3)\" && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" prompt || { echo \"op-secrets: the guard needs Python 3 on PATH (python3 or python); it is NOT running\" >&2; exit 1; }'", "timeout": 10 }
         ]
       }
     ],
@@ -12,26 +12,26 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" bash'", "timeout": 10 }
+          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && \"$p\" -c \"import sys; sys.exit(sys.version_info[0] < 3)\" && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" bash || { echo \"op-secrets: the guard needs Python 3 on PATH (python3 or python); it is NOT running\" >&2; exit 1; }'", "timeout": 10 }
         ]
       },
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" write'", "timeout": 10 }
+          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && \"$p\" -c \"import sys; sys.exit(sys.version_info[0] < 3)\" && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" write || { echo \"op-secrets: the guard needs Python 3 on PATH (python3 or python); it is NOT running\" >&2; exit 1; }'", "timeout": 10 }
         ]
       },
       {
         "matcher": "Read|Grep|Glob",
         "hooks": [
-          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" read'", "timeout": 10 }
+          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && \"$p\" -c \"import sys; sys.exit(sys.version_info[0] < 3)\" && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" read || { echo \"op-secrets: the guard needs Python 3 on PATH (python3 or python); it is NOT running\" >&2; exit 1; }'", "timeout": 10 }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" stop'", "timeout": 10 }
+          { "type": "command", "command": "sh -c 'p=$(command -v python3 || command -v python) && \"$p\" -c \"import sys; sys.exit(sys.version_info[0] < 3)\" && exec \"$p\" \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.py\" stop || { echo \"op-secrets: the guard needs Python 3 on PATH (python3 or python); it is NOT running\" >&2; exit 1; }'", "timeout": 10 }
         ]
       }
     ]

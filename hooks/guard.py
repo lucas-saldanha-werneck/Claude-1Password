@@ -25,6 +25,7 @@ A secret file may be listed, moved, counted, sourced or read for its variable NA
 Escape hatch for the USER only: prompt starting with "#allow-secret"; env CLAUDE_1PASSWORD_GUARD=off.
 There is deliberately no per-command override the model could type.
 """
+import fnmatch
 import json
 import os
 import re
@@ -99,7 +100,8 @@ def looks_like_secret(text: str) -> str:
         has_digit = re.search(r"\d", val) is not None
         mixed_case = re.search(r"[A-Z]", val) is not None and re.search(r"[a-z]", val) is not None
         if has_digit or mixed_case:
-            return "a value after '%s'" % re.sub(r"\s+", " ", m.group(0)[:10]).strip()
+            kw = re.match(KEYWORD, m.group(0), re.I)   # the keyword only: never a character of the value
+            return "a value after '%s'" % (kw.group(0).lower() if kw else "a keyword")
     return ""
 
 
@@ -119,6 +121,30 @@ PATH_OK = re.compile(
 def secret_path(p: str) -> bool:
     p = (p or "").strip().strip("\"'")
     return bool(SECRET_PATH.search(p)) and not PATH_OK.search(p)
+
+
+# file names a glob is tested against: does `--include=GLOB` / Grep glob=GLOB select a secret file?
+SECRET_SAMPLES = (".env", ".env.local", ".env.production", ".envrc", ".netrc", ".npmrc", ".pgpass", ".pypirc",
+                  ".git-credentials", "credentials", "credentials.json", "token.json", "id_rsa", "id_ed25519",
+                  "server.pem", "server.key", "secrets.yaml", "secrets.yml", "secrets.json", "secret.json")
+
+
+def expand_braces(g: str):
+    m = re.search(r"\{([^{}]*)\}", g)
+    if not m:
+        return [g]
+    return [x for alt in m.group(1).split(",") for x in expand_braces(g[:m.start()] + alt + g[m.end():])]
+
+
+def glob_hits_secret(g: str) -> bool:
+    g = (g or "").strip().strip("\"'")
+    if not g or g.startswith("!"):
+        return False
+    for alt in expand_braces(g):
+        base = alt.rstrip("/").split("/")[-1] or alt
+        if any(fnmatch.fnmatchcase(n, base) for n in SECRET_SAMPLES):
+            return True
+    return False
 
 
 def paths_in_word(w: str):
@@ -427,6 +453,73 @@ SCRIPT_LEAKS = re.compile(
 SCRIPT_OPEN = re.compile(r"(?:open|readFileSync|readFile|read_text|read_bytes|load_dotenv|dotenv_values|Path|fopen)\s*\(([^)]*)\)")
 
 
+# one variable printed from a script: print(os.environ['X']), console.log(process.env.X), puts ENV['X']
+SINGLE_LEAK = re.compile(
+    r"\b(?:print|pprint|puts|console\.\w+|(?:sys|process)\.std(?:out|err)\.write|System\.out\.print\w*)\s*\(?"
+    r"[^\n;]{0,80}?(?:os\.environ(?:\.get)?\s*[\[(]|os\.getenv\s*\(|(?:process|Bun)\.env(?:\.|\[)|"
+    r"Deno\.env\.get\s*\(|ENV(?:\.fetch\s*\(|\[)|getenv\s*\()\s*['\"]?([A-Za-z_]\w*)")
+KEYISH = r"[A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASS|PWD|CRED|AUTH|PRIVATE|SENHA)[A-Z0-9_]*"
+GREP_VALUE_OPTS = {"-e", "-f", "-m", "-A", "-B", "-C", "-d", "-D", "-g", "-t", "-M", "-j", "--include",
+                   "--exclude", "--exclude-dir", "--regexp", "--file", "--glob", "--iglob", "--type", "--type-not",
+                   "--max-count", "--context", "--directories"}
+PRINTERS = {"cat", "head", "tail", "less", "more", "tee", "tr", "cut", "sed", "awk", "xxd", "od", "hexdump", "base64",
+            "rev", "fold", "strings", "grep", "pbcopy"}
+SCREEN = re.compile(r"/dev/(?:stdout|stderr|tty|fd/)")
+
+
+def grep_may_print_secret_file(c, args) -> bool:
+    """A recursive content search for a key NAME, over folders that hold .env files, prints KEY=value lines."""
+    opts, operands, i = {}, [], 0
+    while i < len(args):
+        a = args[i]
+        if a == "--":
+            operands += args[i + 1:]
+            break
+        if a.startswith("--") and a.endswith("=") and i + 1 < len(args):   # --exclude='x' is split in the view
+            opts.setdefault(a[:-1], []).append(args[i + 1])
+            i += 1
+        elif a.startswith("--") and "=" in a:
+            k, val = a.split("=", 1)
+            opts.setdefault(k, []).append(val)
+        elif a in GREP_VALUE_OPTS and i + 1 < len(args):
+            opts.setdefault(a, []).append(args[i + 1])
+            i += 1
+        elif a.startswith("-") and len(a) > 1:
+            opts.setdefault(a, []).append("")
+        else:
+            operands.append(a)
+        i += 1
+    fl = short_flags([a for a in opts if a not in GREP_VALUE_OPTS])
+    pats = opts.get("-e", []) + opts.get("--regexp", [])
+    if not pats and not ({"-f", "--file"} & set(opts)):
+        if not operands:
+            return False
+        pats, operands = [operands[0]], operands[1:]
+    if c == "rg":   # rg skips hidden (.env) and git-ignored files unless told otherwise
+        if not ({"--hidden", "-."} & set(opts) or "uu" in fl):
+            return False
+    elif not ("r" in fl.lower() or {"--recursive", "--dereference-recursive"} & set(opts)
+              or "recurse" in opts.get("-d", []) + opts.get("--directories", [])):
+        return False
+    incl = opts.get("--include", []) + [g for k in ("-g", "--glob", "--iglob") for g in opts.get(k, [])]
+    excl = opts.get("--exclude", []) + [g[1:] for g in incl if g.startswith("!")]
+    if any(glob_hits_secret(g) for g in excl):
+        return False   # secret files excluded on purpose
+    pos = [g for g in incl if not g.startswith("!")]
+    if pos and not any(glob_hits_secret(g) for g in pos):
+        return False   # e.g. --include=*.py
+    if not pos and {"-t", "--type"} & set(opts):
+        return False
+    if operands and all(re.search(r"[^/]\.\w+$", p) for p in operands):
+        return False   # named files, not folders
+    ci = "i" in fl or "--ignore-case" in opts
+    return any(re.search(KEYISH, p, re.I if ci else 0) for p in pats)
+
+
+GREP_HINT = (" To find where a key is defined, list the files (grep -rl / Grep output_mode files_with_matches), "
+             "exclude secret files (--exclude='.env*', rg -g '!.env*'), or limit the search (--include='*.py').")
+
+
 def ev_bash(d):
     cmd = (d.get("tool_input") or {}).get("command", "") or ""
     v = View(cmd)
@@ -436,6 +529,11 @@ def ev_bash(d):
     for src in [cmd] + v.scripts:
         if SCRIPT_LEAKS.search(src):
             block("dumping the environment from a script leaks the secrets injected by op-env.")
+    for src in [v.text] + v.scripts:
+        for m in SINGLE_LEAK.finditer(src):
+            if SECRET_NAME.search(m.group(1)) or re.search(r"\bop-env\b", cmd):
+                block("printing %s from a script puts the secret in the transcript. Use it inside the call that "
+                      "needs it." % m.group(1) + CHECK_HINT)
     for src in v.scripts:
         for m in SCRIPT_OPEN.finditer(src):
             for lit in re.findall(r"['\"]([^'\"]+)['\"]", m.group(1)):
@@ -475,6 +573,22 @@ def ev_bash(d):
                 block("secret-dialog prints the value it collects; only op-store may call it.")
             if c in ("declare", "typeset") and any(SECRET_NAME.search(a) for a in operands):
                 block("printing a secret variable leaks it." + CHECK_HINT)
+            # macOS Keychain: -w prints the password, -g prints it with the item's attributes
+            if c == "security" and args[:1] and args[0] in ("find-generic-password", "find-internet-password") \
+                    and set(short_flags(args[1:])) & set("wg"):
+                later = parsed[k + 1:]
+                hidden = masked or any(w and not SCREEN.match(w) for w in writes) or \
+                    (later and later[0][0] not in PRINTERS)
+                if not hidden:
+                    block("`security find-*-password -w/-g` prints a Keychain password (op-env's service-account "
+                          "token lives there). Use it inside the command that needs it, e.g. t=$(security ...).")
+            # verbose HTTP clients print the request headers, Authorization: Bearer $TOKEN included
+            if (c == "curl" and ("v" in short_flags(args) or
+                                 {"--verbose", "--trace", "--trace-ascii"} & {a.split("=")[0] for a in args})) or \
+                    (c == "wget" and ("d" in short_flags(args) or "--debug" in args)):
+                if strip_wrappers(stages[k], v)[1] or any(re.search(SECRET_VAR, a) for a in args):
+                    block("%s in verbose/trace mode prints the request headers, secret included. "
+                          "Drop -v/--trace (use -s -o out.json -w '%%{http_code}')." % c)
             # secret files: listing, moving, counting, sourcing, names-only reads and writes are fine
             to_screen = any(re.match(r"/dev/(?:stdout|stderr|tty|fd/)", a) for a in args + writes)
             tracing = re.search(r"\bset\s+-[a-z]*x|\bset\s+-o\s+xtrace|\b" + SHELLS + r"\s+-[a-z]*x", v.text)
@@ -493,6 +607,8 @@ def ev_bash(d):
                         block("'%s' is a secret file. Printing its values puts secrets in the transcript. "
                               "Allowed: ls/mv/cp/chmod it, source it, or read NAMES only "
                               "(grep -o '^[A-Z_]*', cut -d= -f1, sed 's/=.*//'). Or migrate it with op-store." % p)
+            if c in ("grep", "egrep", "fgrep", "rg") and grep_may_print_secret_file(c, args):
+                block("a recursive search for a key name prints the KEY=value lines of any .env file it meets." + GREP_HINT)
     why = looks_like_secret(cmd)
     if why:
         block("the command contains %s. A literal secret on the command line ends up in the transcript. "
@@ -531,6 +647,14 @@ def ev_read(d):
     pat = ti.get("pattern") or ""
     if d.get("tool_name") == "Grep" and looks_like_secret(pat):
         block("grepping for a secret value puts it in the transcript.")
+    if d.get("tool_name") == "Grep" and (ti.get("output_mode") or "files_with_matches") == "content":
+        g, where = ti.get("glob") or "", ti.get("path") or ""
+        if glob_hits_secret(g):
+            block("glob '%s' selects secret files; showing matching lines prints their values." % g + GREP_HINT)
+        if not g and not ti.get("type") and not re.search(r"[^/]\.\w+$", where) and \
+                re.search(KEYISH, pat, re.I if ti.get("-i") else 0):
+            block("searching a folder for a key name with output_mode content prints the KEY=value lines of any "
+                  ".env file in it." + GREP_HINT)
 
 
 # whole words only: "computador", "TypeSafe", "puts", "1Password", "TYPESAFE_API_KEY" and "43k token" are not requests

@@ -17,6 +17,9 @@ Versions: [Semantic Versioning](https://semver.org/). Release notes and download
 - Short plugin description.
 
 ### Fixed
+- Guard: `op-env` is now unwrapped like `sudo`/`env`/`timeout` (including `--tpl X`, `--strict`, `--`), so the
+  command it runs is judged. `op-env printenv`, `op-env -- env`, `op-env printenv <ANY_NAME>` and
+  `op-env sh -c 'export -p'` are blocked; `op-env -- sh -c '[ -n "$VAR" ] && echo set'` still passes.
 - `op-env` retries twice when it loads 0 keys (seen 2026-10-02: sessions opened in the same minute got
   nothing while `op-env --check` passed seconds later) and logs op's error to `~/Library/Logs/op-env.log`.
 

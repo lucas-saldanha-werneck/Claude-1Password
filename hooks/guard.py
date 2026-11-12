@@ -287,18 +287,33 @@ class View:
 WRAPPERS = {"sudo", "command", "exec", "nice", "nohup", "time", "builtin", "caffeinate"}
 
 
+def strip_wrappers(words, v):
+    """Drop leading wrappers (sudo, env VAR=x, timeout N, op-env [flags] [--]) → (inner words, ran under op-env)."""
+    w, op_env = list(words), False
+    while w:
+        if re.match(r"^[A-Za-z_]\w*=", w[0]) or w[0] in WRAPPERS:
+            w = w[1:]
+        elif w[0] == "timeout" and len(w) > 1:
+            w = w[2:]
+        elif len(w) > 1 and w[0] == "env" and (re.match(r"^[A-Za-z_]\w*=", w[1]) or not w[1].startswith("-")):
+            w = w[1:]
+            while w and re.match(r"^[A-Za-z_]\w*=", w[0]):
+                w = w[1:]
+        elif os.path.basename(v.unq(w[0])) == "op-env":
+            # op-env exports every template secret, then execs the rest: judge that command
+            op_env, w = True, w[1:]
+            while w and w[0] in ("--tpl", "--strict"):
+                w = w[2:] if w[0] == "--tpl" else w[1:]
+            if w and w[0] == "--":
+                w = w[1:]
+        else:
+            break
+    return w, op_env
+
+
 def parse_stage(words, v):
     """→ (cmd, args, reads, writes): args unquoted; reads/writes = redirect targets."""
-    w = list(words)
-    while w and (re.match(r"^[A-Za-z_]\w*=", w[0]) or w[0] in WRAPPERS or w[0] == "timeout"):
-        if w[0] == "timeout" and len(w) > 1:
-            w = w[2:]
-            continue
-        w = w[1:]
-    if len(w) > 1 and w[0] == "env" and (re.match(r"^[A-Za-z_]\w*=", w[1]) or not w[1].startswith("-")):
-        w = w[1:]
-        while w and re.match(r"^[A-Za-z_]\w*=", w[0]):
-            w = w[1:]
+    w, _ = strip_wrappers(words, v)
     if not w:
         return "", [], [], []
     cmd = os.path.basename(v.unq(w[0]))
@@ -437,8 +452,9 @@ def ev_bash(d):
             if c in ("env", "printenv") and not operands and not masked:
                 block("printing the whole environment leaks the secrets injected by op-env. Use `op-env --list` "
                       "(names only), or mask values: env | grep X | sed 's/=.*/=<set>/'.")
+            # under op-env every exported name is a secret, whatever it is called
             if c == "printenv" and operands and not masked and \
-                    any("$" in a or SECRET_NAME.search(a) for a in operands):
+                    (strip_wrappers(stages[k], v)[1] or any("$" in a or SECRET_NAME.search(a) for a in operands)):
                 block("printing a secret env var leaks it. Use it inside a command instead." + CHECK_HINT)
             if (c == "set" and not args) or (c == "export" and args[:1] == ["-p"]) or \
                     (c in ("declare", "typeset") and set(short_flags(args)) & set("xp") and not operands) or \

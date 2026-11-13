@@ -3,7 +3,21 @@
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions: [Semantic Versioning](https://semver.org/). Release notes and downloadable assets: [GitHub Releases](https://github.com/lucas-saldanha-werneck/op-secrets/releases).
 
-## [Unreleased]
+## [0.7.0] - 2026-11-13
+
+### Changed
+- Renamed the skill to `op-secrets` (the old name `1password` broke the skill schema). The `op-env`, `op-store` and `secret-dialog` commands keep their names.
+- Skill frontmatter has `version` and `tags`; the skill has Purpose, Prerequisites and Limitations sections; the description is in the third person.
+- The README shows only the new demo (the old `demo/demo.gif` image is gone from the page).
+
+## [0.6.6] - 2026-11-13
+
+### Changed
+- Skill frontmatter has the author; the skill has Instructions and Examples sections; the plugin author matches the other plugins.
+
+## Between [0.6.0] and [0.6.5] - 2026-11-08 to 2026-11-12
+
+These changes shipped in the releases between 0.6.0 and 0.6.5; they were listed as Unreleased.
 
 ### Added
 - `op-env --meta "<item>" [vault]`: shows title, vault, category, version, created/updated dates and
@@ -15,7 +29,6 @@ Versions: [Semantic Versioning](https://semver.org/). Release notes and download
 - The README installs the plugin from the catalog (`op-secrets@lucas-plugins`); the repo's own
   marketplace still works for existing installs.
 - Short plugin description.
-- Skill frontmatter has the author; the skill has Instructions and Examples sections; the plugin author matches the other plugins.
 
 ### Fixed
 - Guard: `op-env` is now unwrapped like `sudo`/`env`/`timeout` (including `--tpl X`, `--strict`, `--`), so the

@@ -2,7 +2,8 @@
 
 [![CI](https://github.com/lucas-saldanha-werneck/op-secrets/actions/workflows/test.yml/badge.svg)](https://github.com/lucas-saldanha-werneck/op-secrets/actions/workflows/test.yml)
 [![License](https://img.shields.io/github/license/lucas-saldanha-werneck/op-secrets)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.6.6-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.7.0-blue)](CHANGELOG.md)
+[![Skill score](https://img.shields.io/badge/skill%20score-98.8%20A-brightgreen)](https://github.com/NVIDIA/SkillEvaluator)
 
 1Password for [Claude Code](https://claude.com/claude-code), done so that secrets **never** enter the
 chat, the transcript, the command line or your shell history.
@@ -16,10 +17,6 @@ chat, the transcript, the command line or your shell history.
 <td align="center"><img src="https://github.com/user-attachments/assets/dea49274-abdb-4497-9226-4f885c43db2e" alt="Summary: Claude uses your keys and never sees them" width="320"><br>The idea in short</td>
 </tr>
 </table>
-
-![You paste a key → the hook erases it → Claude runs op-store → a native dialog with an eye → saved as op://](demo/demo.gif)
-
-<sub>Rendered demo (`demo/demo.html`, `demo/render.sh`); the dialog is drawn after the real macOS one.</sub>
 
 **What it does.** Three things. **Save** a secret: run `op-store` and a small window opens that Claude
 cannot see — paste there, use the eye button to check it, and it lands in 1Password. **Read** one back:
@@ -91,7 +88,7 @@ or `python` on PATH:
 claude plugin marketplace add lucas-saldanha-werneck/lucas-tools
 claude plugin install op-secrets@lucas-tools
 ```
-Copying `skills/1password/` into `~/.claude/skills/` gives the rules only, no hooks.
+Copying `skills/op-secrets/` into `~/.claude/skills/` gives the rules only, no hooks.
 
 ### Make plain `claude` do it (optional)
 
@@ -164,7 +161,7 @@ Start with `op-env --check`; each line names the fix. Two cases that look like s
   More than one item matches`, two items share a title. Delete the duplicate, or point the template at the
   item ID from that message: `VAR=op://Vault/<item id>/field`.
 
-More cases (print mode, `/mcp` reconnect, dialog backends) in `skills/1password/SKILL.md` → Troubleshooting.
+More cases (print mode, `/mcp` reconnect, dialog backends) in `skills/op-secrets/SKILL.md` → Troubleshooting.
 
 ## Security model, honestly
 

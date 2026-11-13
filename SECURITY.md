@@ -8,7 +8,7 @@ security problem.
 
 ## Supported versions
 
-Only the latest release (0.6.6) is supported. Fixes go into a new release.
+Only the latest release (0.7.0) is supported. Fixes go into a new release.
 
 ## What op-secrets accesses
 

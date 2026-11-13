@@ -1,7 +1,21 @@
 # op-secrets
 
+[![CI](https://github.com/lucas-saldanha-werneck/op-secrets/actions/workflows/test.yml/badge.svg)](https://github.com/lucas-saldanha-werneck/op-secrets/actions/workflows/test.yml)
+[![License](https://img.shields.io/github/license/lucas-saldanha-werneck/op-secrets)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.6.6-blue)](CHANGELOG.md)
+
 1Password for [Claude Code](https://claude.com/claude-code), done so that secrets **never** enter the
 chat, the transcript, the command line or your shell history.
+
+[![op-secrets demo: tap to open the video](https://github.com/user-attachments/assets/59e1e1f5-9f16-43c2-806c-3aa60f2a8f9b)](https://lucas-saldanha-werneck.github.io/op-secrets/demo.mp4)
+
+<table>
+<tr>
+<td align="center"><img src="https://github.com/user-attachments/assets/13abc009-5d63-4eb8-9b74-2e9e1a00dfb6" alt="A pasted key blocked and erased before Claude sees it" width="320"><br>A pasted key is erased</td>
+<td align="center"><img src="https://github.com/user-attachments/assets/0a51e9f0-ce8d-495b-8cce-829a336b6799" alt="The native dialog where the key is pasted" width="320"><br>A dialog Claude cannot see</td>
+<td align="center"><img src="https://github.com/user-attachments/assets/dea49274-abdb-4497-9226-4f885c43db2e" alt="Summary: Claude uses your keys and never sees them" width="320"><br>The idea in short</td>
+</tr>
+</table>
 
 ![You paste a key → the hook erases it → Claude runs op-store → a native dialog with an eye → saved as op://](demo/demo.gif)
 
@@ -187,6 +201,10 @@ More cases (print mode, `/mcp` reconnect, dialog backends) in `skills/1password/
 - 1Password docs: [CLI app integration](https://developer.1password.com/docs/cli/app-integration/), [secret references](https://developer.1password.com/docs/cli/secret-references/), [service accounts](https://developer.1password.com/docs/service-accounts/).
 
 Not affiliated with 1Password or Anthropic.
+
+## Security
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 

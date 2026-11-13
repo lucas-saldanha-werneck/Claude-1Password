@@ -8,34 +8,12 @@ Versions: [Semantic Versioning](https://semver.org/). Release notes and download
 ### Changed
 - Renamed the skill to `op-secrets` (the old name `1password` broke the skill schema). The `op-env`, `op-store` and `secret-dialog` commands keep their names.
 - Skill frontmatter has `version` and `tags`; the skill has Purpose, Prerequisites and Limitations sections; the description is in the third person.
-- The README shows only the new demo (the old `demo/demo.gif` image is gone from the page).
+- The README shows only the new demo (the old `demo/demo.gif` image is gone from the page); demo video and badges in the README; adds SECURITY.md.
 
 ## [0.6.6] - 2026-11-13
 
 ### Changed
 - Skill frontmatter has the author; the skill has Instructions and Examples sections; the plugin author matches the other plugins.
-
-## Between [0.6.0] and [0.6.5] - 2026-11-08 to 2026-11-12
-
-These changes shipped in the releases between 0.6.0 and 0.6.5; they were listed as Unreleased.
-
-### Added
-- `op-env --meta "<item>" [vault]`: shows title, vault, category, version, created/updated dates and
-  field names of one item, never values. Answers "did my edit in the app reach 1Password?" without
-  `op item get`, which the guard blocks.
-
-### Changed
-- The repository is now `lucas-saldanha-werneck/op-secrets` (was `Claude-1Password`; GitHub redirects the old URL).
-- The README installs the plugin from the catalog (`op-secrets@lucas-plugins`); the repo's own
-  marketplace still works for existing installs.
-- Short plugin description.
-
-### Fixed
-- Guard: `op-env` is now unwrapped like `sudo`/`env`/`timeout` (including `--tpl X`, `--strict`, `--`), so the
-  command it runs is judged. `op-env printenv`, `op-env -- env`, `op-env printenv <ANY_NAME>` and
-  `op-env sh -c 'export -p'` are blocked; `op-env -- sh -c '[ -n "$VAR" ] && echo set'` still passes.
-- `op-env` retries twice when it loads 0 keys (seen 2026-10-02: sessions opened in the same minute got
-  nothing while `op-env --check` passed seconds later) and logs op's error to `~/Library/Logs/op-env.log`.
 
 ## [0.6.5] - 2026-11-12
 
@@ -64,6 +42,43 @@ These changes shipped in the releases between 0.6.0 and 0.6.5; they were listed 
   - blocks printing one secret variable from a script (`print(os.environ['X_TOKEN'])`, `console.log(process.env.X_KEY)`)
     and `curl -v/--trace` or `wget --debug` with a secret variable or under `op-env`;
   - block messages name the keyword only, never the first characters of the value.
+
+## [0.6.4] - 2026-11-11
+
+### Fixed
+- Guard: `op-env` is now unwrapped like `sudo`/`env`/`timeout` (including `--tpl X`, `--strict`, `--`), so the
+  command it runs is judged. `op-env printenv`, `op-env -- env`, `op-env printenv <ANY_NAME>` and
+  `op-env sh -c 'export -p'` are blocked; `op-env -- sh -c '[ -n "$VAR" ] && echo set'` still passes.
+
+## [0.6.3] - 2026-11-11
+
+### Changed
+- Points to the catalog repo's new name, `lucas-tools`.
+
+## [0.6.2] - 2026-11-11
+
+### Changed
+- Catalog renamed to `lucas-tools`: install with `op-secrets@lucas-tools`.
+
+## [0.6.1] - 2026-11-09
+
+### Added
+- `op-env --meta "<item>" [vault]`: shows title, vault, category, version, created/updated dates and
+  field names of one item, never values. Answers "did my edit in the app reach 1Password?" without
+  `op item get`, which the guard blocks.
+- `op-env --list` works without the `op` CLI (it only reads the template).
+
+### Changed
+- The repository is now `lucas-saldanha-werneck/op-secrets` (was `Claude-1Password`; GitHub redirects the old URL).
+- The README installs the plugin from the catalog (`op-secrets@lucas-plugins`); the repo's own
+  marketplace still works for existing installs.
+- Short plugin description.
+- CI runs the tests on Linux, macOS and Windows.
+
+### Fixed
+- `op-env` retries twice when it loads 0 keys (seen 2026-10-02: sessions opened in the same minute got
+  nothing while `op-env --check` passed seconds later) and logs op's error to `~/Library/Logs/op-env.log`.
+- Windows: `op-store --update` gets the current item through bash.
 
 ## [0.6.0] - 2026-09-26
 
@@ -104,7 +119,7 @@ These changes shipped in the releases between 0.6.0 and 0.6.5; they were listed 
 - New side doors closed while loosening: `find -exec`, `tar -O`/`unzip -p`, `cp .env /dev/stdout`, `grep -o '.*'`,
   a second `sed -e` script, `cat <<EOF | sh`, `set -x` + `source .env`, `declare -p SECRET`. 204 tests pass.
 
-## [0.4.2] - 2026-09-18
+## [0.4.2] - 2026-09-19
 
 ### Fixed
 - `op-store` saved every item with an EMPTY value since 0.3.0 (2026-09-11), and still printed `OK`. The python
@@ -146,6 +161,7 @@ These changes shipped in the releases between 0.6.0 and 0.6.5; they were listed 
 ### Added
 - `install.sh --wrap-claude`: installs `~/.local/opbin/claude`, a wrapper so plain `claude` starts through `op-env` (loop-safe via `OP_ENV_LOADED=1`).
 - `op-env --strict`: refuse to run when the secrets cannot be loaded.
+- `CHANGELOG.md`.
 
 ### Changed
 - `op-env` runs the command without secrets (with a loud warning) when the template is empty or 1Password is locked; `--strict` restores the old refusal.
@@ -173,7 +189,6 @@ Fixes from a Codex review and an adversarial review, plus the demo.
 - `install.sh` self-tests the guard and warns when Python is missing.
 - `tests/run.sh`: 119 cases, a "known gaps" section that documents bypasses honestly, and smoke tests.
 - `demo/`: rendered demo GIF and MP4, source page and render script.
-- `CHANGELOG.md`.
 
 ### Changed
 - `op-env` uses a NUL-delimited transport, so multi-line values survive; the template is validated (identifiers only, values must start with `op://`); CRLF templates are tolerated.
@@ -205,8 +220,9 @@ Fixes from a Codex review and an adversarial review, plus the demo.
 - Claude Code skill `1password` with the rules.
 - Plugin manifest and marketplace file; `install.sh`; MIT license.
 
-[Unreleased]: https://github.com/lucas-saldanha-werneck/op-secrets/compare/v0.5.0...HEAD
+[0.6.0]: https://github.com/lucas-saldanha-werneck/op-secrets/releases/tag/v0.6.0
 [0.5.0]: https://github.com/lucas-saldanha-werneck/op-secrets/releases/tag/v0.5.0
+[0.4.1]: https://github.com/lucas-saldanha-werneck/op-secrets/releases/tag/v0.4.1
 [0.4.0]: https://github.com/lucas-saldanha-werneck/op-secrets/releases/tag/v0.4.0
 [0.3.0]: https://github.com/lucas-saldanha-werneck/op-secrets/releases/tag/v0.3.0
 [0.2.0]: https://github.com/lucas-saldanha-werneck/op-secrets/commit/35aa4be

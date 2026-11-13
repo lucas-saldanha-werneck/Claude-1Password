@@ -8,9 +8,19 @@ description: >
   or asks how to launch Claude Code with secrets loaded. Provides: `op-store` (native hidden
   dialog with an eye/reveal toggle → straight into 1Password), `op-env` (launch any command with
   secrets injected, TTY preserved, one biometric prompt) and `secret-dialog`.
+metadata:
+  author: Lucas Saldanha Werneck <lucas@2olhares.com>
 ---
 
 # 1Password for Claude Code
+
+## Instructions
+
+1. Never ask for a secret in the chat. To store one, run `op-store <title>`; a native dialog opens and only the `op://` reference comes back.
+2. If a tool needs the secret as an environment variable, append `VAR_NAME=op://...` to `~/.claude/.env.tpl`.
+3. Tell the user to start Claude Code with `op-env claude`, so the variables are loaded with one biometric prompt.
+4. Use `$VAR_NAME` in commands; never print values, never `op read` inside every Bash call.
+5. When anything fails, run `op-env --check` first, then see Troubleshooting below.
 
 ## The one rule
 
@@ -111,3 +121,12 @@ op-env --check
 - Linux: KDE uses `kdialog --password` (eye built in, KDE Frameworks ≥ 5.84); GNOME uses GTK4 `Gtk.PasswordEntry` via `python3-gi`; else `zenity` (no eye); else `read -s` in a TTY.
 - Windows: PowerShell + WinForms dialog. Claude Code runs in Git Bash; the scripts run there.
   Windows and Linux backends are not yet verified by the author.
+
+## Examples
+
+- "Store my Apify key": run `op-store Apify`, tell the user a dialog opened and to paste there; it prints
+  `OK op://Claude/Apify/credential`. Then append `APIFY_TOKEN=op://Claude/Apify/credential` to `~/.claude/.env.tpl`
+  and tell the user to restart with `op-env claude`.
+- "How do I start Claude Code with my secrets loaded?": `op-env claude` (any command works: `op-env ./deploy.sh`).
+- "Where do I put my key?": not in the chat; use `op-store <title>`, then the `op://` reference in `.env.tpl`.
+- "Secrets are not loading": run `op-env --check`; `resolved: N of M` with N < M means a reference in the template is wrong.

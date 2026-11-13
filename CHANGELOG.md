@@ -15,6 +15,7 @@ Versions: [Semantic Versioning](https://semver.org/). Release notes and download
 - The README installs the plugin from the catalog (`op-secrets@lucas-plugins`); the repo's own
   marketplace still works for existing installs.
 - Short plugin description.
+- Skill frontmatter has the author; the skill has Instructions and Examples sections; the plugin author matches the other plugins.
 
 ### Fixed
 - Guard: `op-env` is now unwrapped like `sudo`/`env`/`timeout` (including `--tpl X`, `--strict`, `--`), so the

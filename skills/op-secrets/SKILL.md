@@ -1,18 +1,27 @@
 ---
-name: 1password
+name: op-secrets
 description: >
   Use 1Password with Claude Code without secrets ever entering the chat, the transcript, the
-  command line or shell history. Trigger when the user wants to store an API key, token, password
+  command line or shell history. Use when the user wants to store an API key, token, password
   or credential; when a tool, MCP server, hook or script needs a secret; when the user mentions
-  1Password, `op`, `op://`, secret references, .env files with secrets, "where do I put my key",
-  or asks how to launch Claude Code with secrets loaded. Provides: `op-store` (native hidden
-  dialog with an eye/reveal toggle → straight into 1Password), `op-env` (launch any command with
-  secrets injected, TTY preserved, one biometric prompt) and `secret-dialog`.
+  1Password, `op`, `op://`, secret references, .env files with secrets, "where does the key go",
+  or asks how to launch Claude Code with secrets loaded. Provides `op-store` (native hidden
+  dialog with an eye/reveal toggle, straight into 1Password), `op-env` (launch any command with
+  secrets injected, TTY preserved, one biometric prompt) and `secret-dialog`. Not for other
+  password managers.
+version: "0.7.0"
 metadata:
   author: Lucas Saldanha Werneck <lucas@2olhares.com>
+  tags: [1password, secrets, security, op, credentials]
 ---
 
 # 1Password for Claude Code
+
+## Purpose
+
+Keep secrets out of the chat, the transcript, the command line and shell history: store them in
+1Password through a dialog Claude cannot see (`op-store`), and load them as environment variables
+for a session or command (`op-env`). Only `op://` references and variable names pass through Claude.
 
 ## Instructions
 
@@ -80,6 +89,11 @@ HTTP servers with a bearer header: `claude mcp add-json` with a `headersHelper` 
 **One-off value outside a session**: `op read "op://Claude/Item/credential"` — fine in the
 user's own terminal, avoid inside Claude's Bash tool (each call is a new shell → new prompt).
 
+## Prerequisites
+
+- The 1Password CLI (`op`) and either the 1Password app with "Integrate with 1Password CLI" on, or a service-account token (`OP_SERVICE_ACCOUNT_TOKEN`).
+- `op-store`, `op-env` and `secret-dialog` installed by `install.sh` into `~/.local/bin`; the guard hooks need `python3` and the plugin install.
+
 ## Setup check (run before the first use)
 
 ```bash
@@ -103,6 +117,13 @@ op-env --check
 - `op://` references reveal vault, item and field *names*. Keep them non-sensitive.
 - Claude Code's own login token lives in the OS keychain and is readable by same-user processes
   (reported by Silverfort, 2026-07). Unrelated to 1Password; nothing here changes it.
+
+## Limitations
+
+- `op-store` saves single-line values only.
+- With the desktop-app integration, `op` can read every vault of the account; only a service account scoped to one vault isolates it.
+- Every subprocess started by Claude Code inherits the injected variables. The guard hooks are a text filter, not a sandbox.
+- Windows and Linux dialog backends are not yet verified by the author.
 
 ## Troubleshooting
 
